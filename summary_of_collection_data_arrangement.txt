@@ -1,0 +1,122 @@
+TAX ON BUSINESS = done
+              -> Amusement Tax = Connected
+			  
+			  -> Business Tax = maual input
+			                -> Manufacturer, Assemblers
+							-> Wholesalers, Distributors
+							-> Retailers
+							-> Contractors & Other Independent Contractors
+							-> Bank & Other Financial Institution
+							-> Other Business Taxes
+							-> Peddlers
+							-> Exporter or Manufacturer, Dealers, or Retailers
+				
+			  -> Fines and Penalties (Tax on Business) = manual input
+			  -> Tax on Sand and Grvel & Other Quarry Resources = connected
+
+REGULATORY FEES 
+              -> Permit and Licenses
+			                        -> Building Permit
+									                  -> Electrical Permit Fees = connected
+													  -> Inspection Fees = connected
+													  -> Permit Fees under Bldg. Code = connected
+									-> Business Permits
+									                  -> Business Permit (Mayor's Permit) = connected
+				                    -> Fees on Weights & Measure = connected
+									
+									-> Fishery Rental Fees and Privilege Fees = connected
+									
+									-> Franchising and Licensing Fees = connected
+									
+									-> Occupational Permit Fees (Professional Fees) = connected
+									
+									-> Other Permit and Licenses
+									                  -> Income from Accountable Forms = connected
+													  -> Income from Agriculture Prod = connected
+													  -> Income from Cockpit Share = connected
+													  -> Income from Diving = Connected
+													  -> Income from Fisheries = connected
+													  -> Income from Livestock = connected
+													  -> Income from Miscellaneous = Connected
+													  -> Income from Sultada = connected
+													  -> Other Permit Fees = connected
+													  -> Signboard Fees = Connected
+													  
+									-> Tricycle Operators and Permit Fees = connected
+									                  -> Motorized Tricycle Operation Permit = connected
+									-> Zonal/Location Clearances Fees = connected
+									
+									-> Registration Fees
+									                  -> Cattle/Animal Registration Fees =connected
+													                    -> Certificate of Ownership = connected
+												                        -> Certificate of Transfer = connected
+													  -> Civil Registration Fees = connected
+													                    -> Burial Fee = connected
+																		-> Correction of Entry = connected
+																		-> Marriage Fee = connected
+																		-> Registration of Birth = connected
+																		
+Service/User Charges
+            -> Clearances and Certification Fees = connected
+			                   -> Health Certificate = connected
+							   -> Other Clearance and Certification = connected
+							   -> Police Clearance = connected
+							   -> Secretary's Fees = Connected
+							   
+			-> Medical, Dental and Laboratory Fees = connected
+			
+			-> Other Fees = connected
+			                  -> Garbage Fees connected
+
+Economic Enterprises = connected
+           -> Income from Communication Operations = connected
+		   -> Income from Lease, Rental of Facilities = connected
+		   -> Income from Market Operations = connected
+		   -> Income from Power Generation, Distribution = connected
+		   -> Income from SlaughterHouse Operation = connected
+		   -> Income from Waterworks System Operation = connected
+
+************************************************************************************************************************************************
+
+Summary of Collection
+
+Manufacturing = Manual input it will base on business tax in other app or database
+Distributor = Manual input it will base on business tax in other app or database
+Retailing = Manual input it will base on business tax in other app or database
+Banks & Other Financial Int. = Manual input it will base on business tax in other app or database
+Other Business Tax = Manual input it will base on business tax in other app or database
+Sand & Gravel = -> Tax on Sand and Grvel & Other Quarry Resources
+Fines & Penalties = Manual input it will base on business tax in other app or database
+Mayor's Permit =  -> Business Permit (Mayor's Permit)
+Weights & Measures = -> Fees on Weights & Measure
+Tricycle Permit Fee =  -> Motorized Tricycle Operation Permit and Franchising and Licensing Fees
+Occupation Tax = -> Occupational Permit Fees (Professional Fees)
+Cert. of Ownership = -> Certificate of Ownership
+Cert. of Transfer = -> Certificate of Transfer
+Cockpit Share =  -> Income from Cockpit Share
+Docking and Mooring Fee = DOCKING - 639 and MOORING FEES - 580
+Sultadas =  -> Amusement Tax , -> Income from Sultada 
+Miscellaneous =  -> Income from Miscellaneous, -> Other Permit Fees,  -> Signboard Fees, STICKER - 807, and BUSINESS PLATE - 808
+Registration of Birth = -> Registration of Birth 
+Marriage Fees =  -> Marriage Fee
+Burial Fees = -> Burial Fee
+Correction of Entry =  -> Correction of Entry
+Fishing Permit Fee = -> Fishery Rental Fees and Privilege Fees and, -> Income from Fisheries, except DOCKING - 639 and MOORING FEES - 580 in Fishery Rental Fees and Privilege Fees
+Sale of Agri. Prod. = -> Income from Agriculture Prod 
+Sale of Acc. Forms =  -> Income from Accountable Forms
+Water Fees =  -> Income from Waterworks System Operation
+Market Stall Fee = -> Income from Market Operations
+Cash Tickets = manual input it will be in other database
+Slaughterhouse Fee = -> Income from SlaughterHouse Operation
+Rent of Equipment = -> Income from Lease, Rental of Facilities, -> Income from Power Generation, Distribution, -> Income from Communication Operations
+Doc Stamp Tax = DOCUMENTARY STAMP - 810
+Secretary Fees = -> Secretary's Fees, -> Police Clearance, -> Health Certificate, -> Other Clearance and Certification  , except DOCUMENTARY STAMP - 810 in Secretary's Fees
+Med./Lab. Fees = -> Medical, Dental and Laboratory Fees
+Garbage Fees = -> Garbage Fees
+Cutting Tree = 0
+Community Tax = other table
+Building Permit Fee = -> Permit Fees under Bldg. Code, 
+Electrical Permit Fee =  -> Electrical Permit Fees
+Zoning Fee =  -> Zonal/Location Clearances Fees
+Livestock = -> Income from Livestock
+Diving Fee = -> Income from Diving

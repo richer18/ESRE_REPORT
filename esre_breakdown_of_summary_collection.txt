@@ -1,0 +1,41 @@
+Tax on Business
+              -> Manufacturing
+			  -> Distributor
+			  -> Retailing
+			  -> Banks & Other Financial Int.
+			  -> Other Business Tax
+			  -> Fines & Penalties
+			  -> Sand & Gravel
+
+Regulatory Fees and Charges
+              -> WEIGHS AND MEASURE
+              -> TRICYCLE PERMIT FEE
+              -> OCCUPATION TAX
+              -> OTHER PERMITS AND LICENSE
+              -> CIVIL REGISTRATION
+              -> CATTLE/ANIMAL REGISTRATION FEES
+              -> BUILDING PERMITS
+              -> BUSINESS PERMITS
+              -> ZONING/LOCATION PERMIT FEES
+			  
+Receipt from Economic Enterprise
+              -> SLAUGHTERHOUSE OPERATIONS
+			  -> MARKET OPERATIONS
+			  -> WATER WORK SYSTEM OPERATIONS
+			  -> LEASE/RENTAL FACILITIES
+
+Service/User Charges
+              -> Police Clearance
+			  -> Secretaries Fee
+			  -> Garbage Fees
+			  -> Med./Lab Fees
+
+Other Taxes
+              -> Community Tax			  
+
+
+
+			  
+
+
+			  

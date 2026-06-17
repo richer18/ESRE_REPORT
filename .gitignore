@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local Firebird database files - do not upload official/live databases
+*.FDB
+*.fdb
+*.GDB
+*.gdb
+
+# Generated reports and exports can contain taxpayer/payment data
+firebird_metadata/output/
+google_sheet_exports/
+
+# Local temporary/runtime files
+*.tmp
+*.temp
+~$*
+
+# Environment and secrets
+.env
+.env.*
+
