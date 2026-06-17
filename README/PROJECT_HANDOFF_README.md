@@ -777,11 +777,11 @@ C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ESRE_REPORT
 GitHub helper files:
 
 ```text
-00_setup_github_repo.bat
-github_menu.bat
-git_status_local.bat
-update_from_github.bat
-update_github.bat
+git_hub_runner\00_setup_github_repo.bat
+git_hub_runner\github_menu.bat
+git_hub_runner\git_status_local.bat
+git_hub_runner\update_from_github.bat
+git_hub_runner\update_github.bat
 .gitignore
 ```
 
@@ -789,37 +789,37 @@ Recommended first-time setup:
 
 ```powershell
 cd C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ESRE_REPORT
-.\00_setup_github_repo.bat
+.\git_hub_runner\00_setup_github_repo.bat
 ```
 
 Menu runner:
 
 ```powershell
-.\github_menu.bat
+.\git_hub_runner\github_menu.bat
 ```
 
 Update local files from GitHub:
 
 ```powershell
-.\update_from_github.bat
+.\git_hub_runner\update_from_github.bat
 ```
 
 Push local changes to GitHub:
 
 ```powershell
-.\update_github.bat
+.\git_hub_runner\update_github.bat
 ```
 
 Push with a custom commit message:
 
 ```powershell
-.\update_github.bat "Update RPT report templates"
+.\git_hub_runner\update_github.bat "Update RPT report templates"
 ```
 
 Check local repo status:
 
 ```powershell
-.\git_status_local.bat
+.\git_hub_runner\git_status_local.bat
 ```
 
 Files intentionally ignored by `.gitignore`:
@@ -833,6 +833,17 @@ __pycache__/
 ```
 
 Reason: generated reports, Google exports, and Firebird databases can contain taxpayer/payment data and should not be uploaded unless intentionally reviewed.
+
+Current local folder organization:
+
+```text
+README\PROJECT_HANDOFF_README.md
+git_hub_runner\*.bat
+work_flow\source/reference files
+run_collection_query.py
+firebird_metadata\
+report_template\
+```
 
 ## Move To Another PC Checklist
 

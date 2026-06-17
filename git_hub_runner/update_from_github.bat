@@ -2,6 +2,9 @@
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
+set "REPO_ROOT=%SCRIPT_DIR%.."
+cd /d "%REPO_ROOT%"
+
 set "REPO_URL=https://github.com/richer18/ESRE_REPORT.git"
 
 where git >nul 2>nul

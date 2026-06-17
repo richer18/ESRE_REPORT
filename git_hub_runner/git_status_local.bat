@@ -1,6 +1,10 @@
 @echo off
 setlocal
 
+set "SCRIPT_DIR=%~dp0"
+set "REPO_ROOT=%SCRIPT_DIR%.."
+cd /d "%REPO_ROOT%"
+
 where git >nul 2>nul
 if errorlevel 1 (
     echo ERROR: Git is not installed or not available in PATH.
@@ -19,4 +23,3 @@ git status --short --branch
 echo.
 git remote -v
 pause
-
