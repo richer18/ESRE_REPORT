@@ -16,8 +16,9 @@ google_sheet_exports/
 *.tmp
 *.temp
 ~$*
+.codex_tmp/
+README/rendered_checklist/
 
 # Environment and secrets
 .env
 .env.*
-

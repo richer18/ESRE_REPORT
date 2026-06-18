@@ -587,6 +587,106 @@ SEF net from inputs: 2,410,108.23
 Grand net from inputs: 4,820,216.46
 ```
 
+## Proposed Report 28: Provincial RPT Coding / Province Remittance Report
+
+Analysis file:
+
+```text
+firebird_metadata\provincial_rpt_coding_template_analysis.md
+```
+
+Uploaded template:
+
+```text
+report_template\PROVINCIAL_RPT_CODING_TEMPLATE.xlsx
+```
+
+Workbook sheets:
+
+```text
+GF
+SEF
+```
+
+Purpose understood:
+
+```text
+Monthly report on the collection of Real Property Tax by property classification.
+Likely used as support for remittance/coding to the Provincial Government.
+```
+
+Template layout:
+
+```text
+Rows 9-21  Property classification lines
+C/E/G/I    Amount columns
+B/D/F/H    Account/coding columns
+Row 23     Subtotals
+Row 25     Total remittance
+```
+
+Likely Firebird source:
+
+```text
+PAYMENT
+PAYMENTCLASSDETAIL
+RPTASSESSMENT
+PROPERTY
+T_CLASSIFICATION
+T_ACTUALUSE
+T_PROPERTYKIND
+```
+
+Likely split:
+
+```text
+GF sheet  = PAYMENTCLASSDETAIL.ITAXTYPE_CT = 'BSC'
+SEF sheet = PAYMENTCLASSDETAIL.ITAXTYPE_CT = 'SEF'
+```
+
+Report 28 must be based on Report 27 sharing logic:
+
+```text
+Basic/GF province share = 35 percent
+SEF province share      = 50 percent
+```
+
+Reason:
+
+```text
+27. Summary Report Sharing already contains the sharing formulas.
+Report 28 should use the same Firebird buckets and sharing rules, then place the Provincial share into the province coding/remittance template.
+```
+
+Required RPT reconciliation chain:
+
+```text
+21. Summary of Collection
+23. Summary of Collection RPT
+25. Record of Real Property Tax Collection
+27. Summary Report Sharing
+28. Provincial RPT Coding / Province Remittance Report
+```
+
+Control meaning:
+
+```text
+Report 21 RPT lines should agree with Report 23 RPT totals.
+Report 23 RPT totals should agree with Report 25 detailed RPT totals.
+Report 25 Basic/SEF totals should agree with the raw BSC/SEF buckets used in Report 27.
+Report 27 Provincial Share totals should agree with Report 28 GF and SEF remittance/coding totals.
+```
+
+Do not automate this report until these mapping issues are confirmed:
+
+```text
+1. Where SPECIAL/SCIENTIFIC/S* classifications should be placed.
+2. Whether "Machinery" in the template means class M/Mineral or property kind M/Machineries.
+3. How to handle property kind P/Improvements.
+4. The Land-TIMBER row has no account/coding values in the uploaded template.
+5. Report 28 should reconcile to Report 27 Provincial Share totals before printing/submission.
+```
+
 ## Sources Of Collections Used In Report 17
 
 The requested source list includes:
@@ -724,6 +824,318 @@ RECEIPTNO
 ```
 
 These allow MySQL rows to trace back to the original Firebird records.
+
+## SRE / LIFT Report Understanding
+
+New reference files reviewed:
+
+```text
+C:\Users\LIFT-LAPTOP\Downloads\SRE_Zamboanguita_Q1_2026.xls
+C:\Users\LIFT-LAPTOP\Downloads\SRS_Zamboanguita_Q1_2026.xls
+C:\Users\LIFT-LAPTOP\Downloads\SOE_Zamboanguita_Q4_2025 (3).xls
+D:\eSRE Retooling (Roll-out of LIFT System V4)\1. eSRE v4_Training Manual_031623 - Final.pptx
+D:\eSRE Retooling (Roll-out of LIFT System V4)\2. JMC of DepEd, DBM, and DILG on the Revised Guideline  on the Use of the SEF.pdf
+D:\eSRE Retooling (Roll-out of LIFT System V4)\BLGF - MC No. 001.2023 - Extension of Deadline for the Submission of the Q1 FY2023 LIFT Reports.pdf
+D:\eSRE Retooling (Roll-out of LIFT System V4)\LIFT - Special Health Fund PPT Presentation.pptx
+```
+
+The file `SRE_Zamboanguita_Q1_2026.xls` is a LIFT/eSRE Statement of Receipts and Expenditures report:
+
+```text
+Report: Statement of Receipts and Expenditures
+LGU: Zamboanguita, Negros Oriental
+Period Covered: Q1, 2026
+Sheet: sre_report
+Rows: 75
+Columns: 11
+Generated: 21/05/2026 11:33 AM
+```
+
+Key Q1 2026 SRE values found:
+
+```text
+Local Sources total: 12,653,372.74
+Tax Revenue total: 7,356,727.51
+Real Property Tax total: 2,881,141.00
+Real Property Tax - General Fund: 1,280,507.11
+Real Property Tax - SEF: 1,600,633.89
+Tax on Business total: 4,110,483.16
+Other Taxes total: 365,103.35
+Non-Tax Revenue total: 5,296,645.23
+External Sources / National Tax Allotment: 47,498,793.00
+Total Current Operating Income: 60,152,165.74
+Current Operating Expenditures: 33,394,643.52
+Net Operating Income from Current Operations: 26,757,522.22
+Fund/Cash Balance End: 53,793,414.30
+```
+
+Important relationship to the Firebird reports:
+
+```text
+Report 25 shows gross RPT collection detail.
+SRE shows LGU fund reporting amounts.
+```
+
+For a municipality, Basic RPT is shared among province, municipality, and barangay. SEF is shared between province and municipality. Therefore, SRE RPT values should be compared to the municipal share/fund columns, not directly to gross RPT detail totals.
+
+Training manual findings:
+
+```text
+LIFT LGU System lets treasurers, budget officers, and assessors encode data for SRE and QRRPA reports.
+Treasurer modules include income targets, RPT receipts, general collection receipts, trust fund receipts, expenditures, fund/cash balance, financial operations, and SRE-NGAS reconciliation.
+RPT receipt encoding includes RPT classification, barangay, PIN, tax declaration number, Basic Tax, SEF, and special levy items.
+The system computes disposition of proceeds for RPT after saving.
+The training manual shows sharing percentages:
+Province: Basic 35 percent, SEF 50 percent
+Municipality: Basic 40 percent, SEF 50 percent
+Barangay: Basic 25 percent
+City: Basic 70 percent, SEF 100 percent, Barangay 30 percent
+```
+
+SEF guideline finding:
+
+```text
+SEF comes from the additional 1 percent real property tax.
+For provinces/municipalities, the additional 1 percent collected in the province is shared equally by the province and municipality.
+SEF proceeds support supplementary annual budgetary needs for public schools through the Local School Board.
+```
+
+BLGF memo finding:
+
+```text
+BLGF MC No. 001.2023 extended the Q1 FY2023 LIFT Reports deadline to 15 July 2023 due to LIFT enhancement and roll-out.
+Sanctions for late submission were temporarily suspended only up to that deadline.
+```
+
+Special Health Fund finding:
+
+```text
+LIFT v4 adds SHF-related items and columns in SRE/SRS/SOE reports.
+SHF is a separate special fund under Universal Health Care, intended for health services, health system operating costs, capital investments, and health worker remuneration/incentives.
+```
+
+Implication for future web reporting:
+
+```text
+The Firebird collection reports can supply receipt-level and collection-detail data.
+The SRE report also needs budget targets, appropriations, expenditures, fund/cash balance, debt service, non-income receipts, continuing appropriations, and SRE-NGAS reconciliation.
+Not all SRE fields can come from cashier collection tables alone.
+```
+
+The file `SRS_Zamboanguita_Q1_2026.xls` is the LIFT/eSRE Statement of Receipts Sources report:
+
+```text
+Report: Statement of Receipts Sources
+LGU: Zamboanguita, Negros Oriental
+Period Covered: Q1, 2026
+Sheet: srs_report
+Rows: 188
+Columns: 11
+```
+
+SRS is the detailed source schedule behind the receipts side of SRE. It shows:
+
+```text
+Particulars
+Account Code
+Income Target / Approved Budget
+Actual Receipts
+Excess of Actual vs Target
+Percent over/under target
+```
+
+Key Q1 2026 SRS values found:
+
+```text
+Tax Revenues actual: 5,756,093.62
+Real Property Tax - Basic actual: 1,280,507.11
+  Current Year: 1,075,939.17
+  Current Year Fines/Penalties: 0.00
+  Prior Years: 181,166.56
+  Prior Years Fines/Penalties: 23,401.38
+Tax on Business actual: 4,110,483.16
+Other Taxes actual: 365,103.35
+Community Tax - Individual actual: 365,103.35
+Non-Tax Revenues actual: 5,296,645.23
+Regulatory Fees actual: 2,938,113.20
+Service/User Charges actual: 311,418.50
+Economic Enterprises actual: 2,041,016.10
+Other Income/Receipts actual: 6,097.43
+Total Income - Local Sources actual: 11,052,738.85
+National Tax Allotment actual: 47,498,793.00
+Total General Fund actual: 58,551,531.85
+Special Education Fund actual: 1,600,633.89
+Grand Total GF + SEF actual: 60,152,165.74
+Advance Payment for RPT: 0.00
+```
+
+Relationship between SRS and SRE:
+
+```text
+SRS explains the receipt/source breakdown.
+SRE summarizes receipts plus expenditures and fund/cash balances.
+SRS Grand Total actual 60,152,165.74 matches SRE Total Current Operating Income 60,152,165.74.
+```
+
+Relationship between SRS and Firebird reports:
+
+```text
+Firebird collection reports can supply many SRS actual receipt lines.
+Report 23/25/27 can support RPT Basic and SEF lines.
+CTC reports support Community Tax lines.
+Other Fees and Charges reports support business taxes, permits, service/user charges, economic enterprise, and miscellaneous local-source lines.
+Income targets/approved budget values are not from cashier collections and must come from LIFT budget/target modules or be imported/encoded separately.
+```
+
+The file `SOE_Zamboanguita_Q4_2025 (3).xls` is the LIFT/eSRE Statement of Expenditures report:
+
+```text
+Report: Statement of Expenditures
+LGU: Zamboanguita, Negros Oriental
+Period Covered: Q4, 2025
+Sheet: soe_report
+Rows: 224
+Columns: 21
+```
+
+SOE is the expenditure-side detail schedule. It shows:
+
+```text
+Particulars
+NGAS Code
+Budget Appropriation by PS / MOOE / FE / CO / Total
+Actual Expenditures by PS / MOOE / FE / CO / Total
+```
+
+SOE allotment class meanings:
+
+```text
+PS   = Personal Services
+MOOE = Maintenance and Other Operating Expenses
+FE   = Financial Expenses / Debt Service
+CO   = Capital Outlay
+```
+
+Key Q4 2025 SOE values found:
+
+```text
+General Fund - General Public Services actual: 118,025,305.30
+General Fund - Social Services actual: 31,481,155.52
+  Health, Nutrition & Population Control actual: 14,413,569.75
+  Social Services and Social Welfare actual: 17,067,585.77
+General Fund - Economic Services actual: 14,262,940.26
+Debt Service actual: 11,435,581.94
+  Principal actual: 7,159,308.94
+  Interest and Other Charges actual: 4,276,273.00
+Total General Fund actual expenditures: 175,204,983.02
+Total SEF actual expenditures: 1,047,349.56
+Total Expenditures actual: 176,252,332.58
+Payment of Prior Year Accounts Payable - GF: 4,827,195.39
+Payment of Prior Year Accounts Payable - SEF: 75,170.83
+Continuing Appropriation actual: 95,065,071.82
+```
+
+Relationship between SOE, SRS, and SRE:
+
+```text
+SRS = detailed receipts/source side.
+SOE = detailed expenditures/use side.
+SRE = summary that combines receipts, expenditures, non-operating items, and fund/cash balance.
+```
+
+Relationship between SOE and Firebird cashier reports:
+
+```text
+SOE is mostly not from cashier collection tables.
+It needs budget/expenditure/appropriation/disbursement data, such as PS, MOOE, FE, CO, debt service, accounts payable, and continuing appropriations.
+Firebird collection reports can support SRS receipt lines, but SOE needs a separate expenditure data source or LIFT import.
+```
+
+## Troubleshooting Negative SOE / Fund Cash Balance
+
+Negative SOE or Fund/Cash Balance values are usually caused by mismatch between budget-side data, accounting-side actual expenditures, and treasurer-side cash/fund balance data.
+
+Common causes:
+
+```text
+1. Supplemental Budget was approved but not encoded in LIFT.
+2. Supplemental Budget was encoded under the wrong office, function, PPA, NGAS code, fund, or allotment class.
+3. Actual expenditures are higher than encoded budget appropriation.
+4. Actual expenditures were encoded in the wrong allotment class: PS, MOOE, FE, or CO.
+5. Actual expenditures were encoded under the wrong fund: GF vs SEF.
+6. Accounts Payable or prior-year payment was duplicated or encoded in the wrong section.
+7. Continuing Appropriation budget/expenditure was not encoded correctly.
+8. Fund/Cash Beginning Balance is wrong or not reconciled with prior year ending balance.
+9. Cash in bank / fund balance composition is incomplete.
+10. Debt service principal/interest was encoded under the wrong line.
+```
+
+LIFT areas to check:
+
+```text
+Authorized Budget > Budget Appropriation > Expenditures
+Authorized Budget > Budget Appropriation > Debt Services
+Authorized Budget > Budget Appropriation > Unappropriated Surplus
+Actual Transaction > Expenditures > Expenditures
+Actual Transaction > Expenditures > Accounts Payable
+Actual Transaction > Expenditures > Debt Services
+Actual Transaction > Others > Fund/Cash Balance
+Actual Transaction > Others > SRE-NGAS Reconciliation
+```
+
+Office responsibility:
+
+```text
+Budget Office:
+- Original appropriation
+- Supplemental Budget
+- Realignment/augmentation
+- Continuing appropriation budget
+
+Accounting Office:
+- Actual expenditures
+- Disbursements
+- Accounts payable
+- Prior-year AP payments
+- NGAS classification
+
+Treasurer's Office:
+- Receipts
+- Cash beginning and ending balance
+- Debt service payments
+- Fund/cash balance reporting
+- SRE/SRS/SOE report checking/submission
+```
+
+Fixing sequence:
+
+```text
+1. Identify the exact negative SOE/SRE row.
+2. Check if actual expenditures are greater than budget appropriation.
+3. If yes, ask Budget Office if there is a Supplemental Budget, realignment, or augmentation.
+4. Encode/update the Supplemental Budget in the correct LIFT budget appropriation screen.
+5. Check fund: GF or SEF.
+6. Check allotment class: PS, MOOE, FE, or CO.
+7. Check office/function/PPA/NGAS code.
+8. Ask Accounting to verify actual expenditures and accounts payable.
+9. Check Fund/Cash Balance beginning amount against prior year's ending balance.
+10. Check continuing appropriation tab if prior-year appropriations/expenditures are involved.
+11. Recompute/regenerate SOE and SRE.
+12. Recheck eSRE alerts: Actual Expenditures > Budget Appropriation, Fund Balance End < 0, Amount Available for Appropriations/Operations < 0.
+```
+
+For next-quarter preparation, use this checklist:
+
+```text
+README\NEXT_QUARTER_LIFT_REPORT_CHECKLIST.md
+README\NEXT_QUARTER_LIFT_REPORT_CHECKLIST.docx
+```
+
+The `.docx` version is the printable Word copy. It is generated by:
+
+```text
+README\build_next_quarter_checklist_docx.py
+```
 
 ## Suggested Future Web Reporting Modules
 
