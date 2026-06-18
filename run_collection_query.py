@@ -9,7 +9,7 @@ import fdb
 from openpyxl import load_workbook
 
 
-DB_PATH = r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB"
+DB_PATH = r"E:\ZAMBOANGUITA.FDB"
 FB_CLIENT = r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll"
 SQL_FILE = Path(__file__).resolve().parent / "firebird_metadata" / "collection_analysis_queries.sql"
 OUTPUT_DIR = Path(__file__).resolve().parent / "firebird_metadata" / "output"
