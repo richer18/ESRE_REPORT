@@ -41,6 +41,7 @@ FDB_TEMPLATE_REPORTS = {
     28: "Provincial RPT Coding / Province Remittance Report",
     29: "Abstract of General Collections",
     30: "Abstract of Trust Funds Collections",
+    31: "Full Report Collections",
 }
 
 
@@ -348,6 +349,62 @@ def write_abstract_trust_funds_workbook(rows, daily_rows, output_path, date_from
     output_path = output_path.with_suffix(".xlsx")
     output_path = save_workbook_with_fallback(workbook, output_path)
     return len(rows) - 1 if rows else 0, output_path
+
+
+def write_full_report_collections_workbook(rows, output_path, date_from, date_to):
+    workbook = load_workbook(TEMPLATE_DIR / "FULL_REPORT_COLLECTIONS.xlsx")
+    sheet = workbook.active
+
+    try:
+        start_date = datetime.strptime(date_from, "%Y-%m-%d")
+        end_date = datetime.strptime(date_to, "%Y-%m-%d")
+        sheet["D4"] = start_date.strftime("%B") if start_date.month == end_date.month else (
+            f"{start_date.strftime('%B')} to {end_date.strftime('%B')}"
+        )
+        sheet["D5"] = str(end_date.year)
+    except ValueError:
+        sheet["D4"] = date_from
+        sheet["D5"] = date_to
+
+    body_rows = rows[1:]
+    start_row = 8
+    template_last_daily_row = 31
+    capacity = template_last_daily_row - start_row + 1
+    if len(body_rows) > capacity:
+        sheet.insert_rows(template_last_daily_row + 1, len(body_rows) - capacity)
+
+    total_row = start_row + max(len(body_rows), capacity)
+    summary_row_1 = total_row + 4
+    summary_row_2 = total_row + 5
+    summary_row_3 = total_row + 6
+
+    for excel_row in range(start_row, total_row):
+        for col_index in range(1, 7):
+            sheet.cell(excel_row, col_index).value = None
+
+    for index, row_values in enumerate(body_rows):
+        excel_row = start_row + index
+        for col_index, value in enumerate(row_values[:4], start=1):
+            sheet.cell(excel_row, col_index).value = excel_value(value)
+        sheet.cell(excel_row, 5).value = None
+        sheet.cell(excel_row, 6).value = f"=SUM(B{excel_row}:D{excel_row})"
+
+    sheet.cell(total_row, 1).value = "TOTAL"
+    for col_letter in ("B", "C", "D", "E", "F"):
+        sheet[f"{col_letter}{total_row}"] = f"=SUM({col_letter}{start_row}:{col_letter}{total_row - 1})"
+
+    sheet[f"C{summary_row_1}"] = "RCD TOTAL"
+    sheet[f"F{summary_row_1}"] = f"=F{total_row}"
+    sheet[f"C{summary_row_2}"] = "LESS: DUE FROM"
+    sheet[f"F{summary_row_2}"] = f"=E{total_row}"
+    sheet[f"C{summary_row_3}"] = "TOTAL COLLECTIONS"
+    sheet[f"F{summary_row_3}"] = f"=F{summary_row_1}-F{summary_row_2}"
+
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(body_rows), output_path
 
 
 def summary_headers():
@@ -1467,6 +1524,83 @@ def build_abstract_trust_funds_rows_from_fdb(date_from, date_to, user, password)
     return rows, daily_rows
 
 
+def add_daily_amount(daily, day, column_name, amount):
+    if day not in daily:
+        daily[day] = {
+            "CTC": Decimal("0"),
+            "RPT": Decimal("0"),
+            "GF_TF": Decimal("0"),
+        }
+    daily[day][column_name] += amount or 0
+
+
+def build_full_report_collections_rows_from_fdb(date_from, date_to, user, password):
+    daily = {}
+    ctc_sql = """
+        SELECT
+            CAST(p.PAYMENTDATE AS DATE) AS COLLECTION_DATE,
+            SUM(pd.AMOUNTPAID) AS AMOUNT
+        FROM PAYMENT p
+        JOIN PAYMENTDETAIL pd ON pd.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND COALESCE(p.VOID_BV, 0) = 0
+          AND (pd.SOURCE_CT IN ('CTCI', 'CTCC') OR pd.ITAXTYPE_CT = 'CTC')
+        GROUP BY CAST(p.PAYMENTDATE AS DATE)
+    """
+    rpt_sql = """
+        SELECT
+            CAST(p.PAYMENTDATE AS DATE) AS COLLECTION_DATE,
+            SUM(pcd.AMOUNT) AS AMOUNT
+        FROM PAYMENT p
+        JOIN PAYMENTCLASSDETAIL pcd ON pcd.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND p.PAYGROUP_CT = 'RPT'
+          AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(pcd.CANCELLED_BV, 0) = 0
+        GROUP BY CAST(p.PAYMENTDATE AS DATE)
+    """
+    gf_tf_sql = """
+        SELECT
+            CAST(p.PAYMENTDATE AS DATE) AS COLLECTION_DATE,
+            SUM(pd.AMOUNTPAID) AS AMOUNT
+        FROM PAYMENT p
+        JOIN PAYMENTDETAIL pd ON pd.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(p.PAYGROUP_CT, '') <> 'RPT'
+          AND NOT (pd.SOURCE_CT IN ('CTCI', 'CTCC') OR pd.ITAXTYPE_CT = 'CTC')
+        GROUP BY CAST(p.PAYMENTDATE AS DATE)
+    """
+
+    con = connect_report_db(user, password)
+    try:
+        cur = con.cursor()
+        for sql, column_name in (
+            (ctc_sql, "CTC"),
+            (rpt_sql, "RPT"),
+            (gf_tf_sql, "GF_TF"),
+        ):
+            cur.execute(sql, (date_from, date_to))
+            for day, amount in cur.fetchall():
+                add_daily_amount(daily, day, column_name, amount)
+        con.rollback()
+    finally:
+        con.close()
+
+    rows = [["DATE", "CTC", "RPT", "GF AND TF"]]
+    for day in sorted(daily):
+        rows.append([
+            day,
+            daily[day]["CTC"],
+            daily[day]["RPT"],
+            daily[day]["GF_TF"],
+        ])
+    return rows
+
+
 def build_summary_sharing_rows_from_fdb(date_from, date_to, user, password):
     buckets, current_taxyear = rpt_summary_rows_from_fdb(date_from, date_to, user, password)
     if current_taxyear is None:
@@ -1554,6 +1688,8 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         rows, daily_rows = build_abstract_trust_funds_rows_from_fdb(
             date_from, date_to, user, password
         )
+    elif number == 31:
+        rows = build_full_report_collections_rows_from_fdb(date_from, date_to, user, password)
     else:
         raise RuntimeError(f"Unsupported FDB template report {number}.")
     if number in (21, 22, 23):
@@ -1574,6 +1710,8 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         return write_abstract_trust_funds_workbook(
             rows, daily_rows, output_path, date_from, date_to
         )
+    if number == 31:
+        return write_full_report_collections_workbook(rows, output_path, date_from, date_to)
     return write_csv_rows(output_path, rows)
 
 

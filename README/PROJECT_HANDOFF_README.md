@@ -154,6 +154,7 @@ Current report list:
 28. Provincial RPT Coding / Province Remittance Report
 29. Abstract of General Collections
 30. Abstract of Trust Funds Collections
+31. Full Report Collections
 ```
 
 Reports 1 to 20 mostly export CSV from SELECT-only SQL.
@@ -166,7 +167,9 @@ Reports 25 to 27 generate Excel files using uploaded RPT templates.
 
 Reports 28 to 30 generate Excel files using uploaded templates.
 
-`python .\run_collection_query.py --list` includes reports 1 to 30.
+Report 31 generates an Excel file using the uploaded Full Report Collections template. `DUE FROM` is manual and remains editable in the generated workbook.
+
+`python .\run_collection_query.py --list` includes reports 1 to 31.
 
 ## Firebird Tables Learned
 
@@ -792,6 +795,75 @@ Daily rows: 23
 Data total: 632,496.20
 Daily total: 632,496.20
 Difference: 0.00
+```
+
+## Report 31: Full Report Collections
+
+Analysis file:
+
+```text
+firebird_metadata\full_report_collections_template_analysis.md
+```
+
+Uploaded template:
+
+```text
+report_template\FULL_REPORT_COLLECTIONS.xlsx
+```
+
+Workbook structure:
+
+```text
+Sheet1 only
+Rows 8-31 are daily rows
+Row 32 contains monthly totals
+Rows 36-38 compute:
+RCD TOTAL - DUE FROM = TOTAL COLLECTIONS
+```
+
+Observed columns:
+
+```text
+A = DATE
+B = CTC
+C = RPT
+D = GF AND TF
+E = DUE FROM
+F = RCD TOTAL
+```
+
+Recommended reconciliation chain:
+
+```text
+CTC column should reconcile to Community Tax / Cedula daily totals.
+RPT column should reconcile to Reports 23, 25, and 27.
+GF AND TF column should reconcile to Reports 22, 29, and 30.
+RCD TOTAL should reconcile to cashier/RCD totals.
+TOTAL COLLECTIONS should equal RCD TOTAL less DUE FROM.
+```
+
+Implementation rule:
+
+```text
+DUE FROM is manual.
+Do not compute it from Firebird.
+Generated workbook should leave daily DUE FROM cells blank or zero for manual entry.
+TOTAL COLLECTIONS should update from the template formula after manual entry.
+```
+
+January 2026 implementation test:
+
+```text
+Command: python .\run_collection_query.py 31 2026-01-01 2026-01-31
+Output: firebird_metadata\output\query_31_2026-01-01_to_2026-01-31.xlsx
+Rows exported: 24
+CTC total: 198,579.28
+RPT total: 4,820,216.46
+GF AND TF total: 5,531,183.41
+RCD TOTAL before manual DUE FROM: 10,549,979.15
+DUE FROM rows blank/manual: 24
+GF AND TF reconciles to Report 29 + Report 30:
+4,898,687.21 + 632,496.20 = 5,531,183.41
 ```
 
 ## Sources Of Collections Used In Report 17
