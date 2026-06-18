@@ -151,6 +151,9 @@ Current report list:
 25. Record of Real Property Tax Collection
 26. Record of Real Property Tax Collection - Advance Payment Report
 27. Summary Report Sharing
+28. Provincial RPT Coding / Province Remittance Report
+29. Abstract of General Collections
+30. Abstract of Trust Funds Collections
 ```
 
 Reports 1 to 20 mostly export CSV from SELECT-only SQL.
@@ -160,6 +163,8 @@ Reports 21 to 23 generate Excel files using uploaded Summary of Collection templ
 Report 24 exports CSV RPT detail summary.
 
 Reports 25 to 27 generate Excel files using uploaded RPT templates.
+
+Reports 28 to 30 are analyzed/proposed template reports and are not yet implemented in the runner.
 
 ## Firebird Tables Learned
 
@@ -685,6 +690,74 @@ Do not automate this report until these mapping issues are confirmed:
 3. How to handle property kind P/Improvements.
 4. The Land-TIMBER row has no account/coding values in the uploaded template.
 5. Report 28 should reconcile to Report 27 Provincial Share totals before printing/submission.
+```
+
+## Proposed Reports 29-30: Abstract Collection Templates
+
+Analysis file:
+
+```text
+firebird_metadata\abstract_collection_templates_analysis.md
+```
+
+Uploaded templates:
+
+```text
+report_template\ABSTRACT_OF_GENERAL_COLLECTIONS.xlsx
+report_template\ABSTRACT_OF_TRUST_FUNDS_COLLECTIONS.xlsx
+```
+
+Both templates contain:
+
+```text
+data
+daily_collection
+```
+
+Report 29: Abstract of General Collections
+
+```text
+Receipt-level source columns for General Fund/non-RPT collections.
+Uses PAYMENT + PAYMENTDETAIL + T_ITAXTYPE + T_FUNDTYPE.
+Should reuse classify_summary_source() mapping from run_collection_query.py.
+```
+
+Report 30: Abstract of Trust Funds Collections
+
+```text
+Receipt-level trust/shared columns for Building, Electrical, Zoning, Livestock, and Diving.
+Uses PAYMENT + PAYMENTDETAIL + T_ITAXTYPE + T_FUNDTYPE.
+Should reuse split_summary_amount() rules where applicable.
+```
+
+Trust split rules found in template:
+
+```text
+Building Fee: 80 percent Local, 15 percent Trust Fund, 5 percent National
+Livestock: 80 percent Local, 20 percent National
+Diving Fee: 40 percent GF, 30 percent Fishers, 30 percent Barangay
+Electrical Fee: one amount column
+Zoning Fee: one amount column
+```
+
+Reconciliation chain:
+
+```text
+21. Summary of Collection
+22. Summary of Collection no rpt
+17. Sources of Collections summary
+29. Abstract of General Collections
+30. Abstract of Trust Funds Collections
+```
+
+Open mapping items:
+
+```text
+1. Confirm Cash Tickets source/code rule.
+2. Confirm whether CTC is excluded from the General Collections abstract.
+3. Confirm whether Electrical and Zoning should remain unsplit.
+4. Confirm whether Building Fee should include PFB, BUF, and INS.
+5. Confirm if daily_collection should be formula-driven from data or generated directly from Firebird.
 ```
 
 ## Sources Of Collections Used In Report 17
