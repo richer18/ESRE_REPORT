@@ -22,3 +22,6 @@ README/rendered_checklist/
 # Environment and secrets
 .env
 .env.*
+
+# APP FOLDER
+LGU_TreasuryReportingSystem/

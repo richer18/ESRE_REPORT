@@ -28,7 +28,7 @@ pip install fastapi uvicorn fdb
 From the main project folder:
 
 ```powershell
-python -m uvicorn kiosk_api_example.main:app --host 127.0.0.1 --port 8000
+python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open:

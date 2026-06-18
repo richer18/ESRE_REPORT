@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 
-DB_PATH = r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB"
+DB_PATH = r"E:\ZAMBOANGUITA.FDB"
 FB_CLIENT = r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll"
 
 
