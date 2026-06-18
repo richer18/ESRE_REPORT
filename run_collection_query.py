@@ -1,5 +1,6 @@
 import argparse
 import csv
+import os
 import re
 from datetime import datetime
 from decimal import Decimal
@@ -9,12 +10,25 @@ import fdb
 from openpyxl import load_workbook
 
 
-DB_PATH = r"E:\ZAMBOANGUITA.FDB"
+DEFAULT_DB_PATHS = [
+    r"E:\ZAMBOANGUITA.FDB",
+    r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB",
+]
 FB_CLIENT = r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll"
 SQL_FILE = Path(__file__).resolve().parent / "firebird_metadata" / "collection_analysis_queries.sql"
 OUTPUT_DIR = Path(__file__).resolve().parent / "firebird_metadata" / "output"
 GOOGLE_EXPORT_DIR = Path(__file__).resolve().parent / "google_sheet_exports"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "report_template"
+
+
+def resolve_db_path():
+    env_path = os.environ.get("ESRE_FIREBIRD_DB")
+    candidates = [env_path] if env_path else []
+    candidates.extend(DEFAULT_DB_PATHS)
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return candidate
+    return candidates[0] if candidates else DEFAULT_DB_PATHS[0]
 
 FDB_TEMPLATE_REPORTS = {
     21: "Summary of Collection",
@@ -24,6 +38,9 @@ FDB_TEMPLATE_REPORTS = {
     25: "Record of Real Property Tax Collection",
     26: "Record of Real Property Tax Collection - Advance Payment Report",
     27: "Summary Report Sharing",
+    28: "Provincial RPT Coding / Province Remittance Report",
+    29: "Abstract of General Collections",
+    30: "Abstract of Trust Funds Collections",
 }
 
 
@@ -264,6 +281,75 @@ def write_summary_sharing_workbook(rows, output_path, date_from, date_to):
     return len(rows) - 1 if rows else 0, output_path
 
 
+def period_label(date_from, date_to):
+    try:
+        start_date = datetime.strptime(date_from, "%Y-%m-%d")
+        end_date = datetime.strptime(date_to, "%Y-%m-%d")
+        start_label = start_date.strftime("%B %d, %Y")
+        end_label = end_date.strftime("%B %d, %Y")
+        return start_label if date_from == date_to else f"{start_label} to {end_label}"
+    except ValueError:
+        return f"{date_from} to {date_to}"
+
+
+def write_provincial_rpt_coding_workbook(rows, output_path, date_from, date_to):
+    workbook = load_workbook(TEMPLATE_DIR / "PROVINCIAL_RPT_CODING_TEMPLATE.xlsx")
+
+    for sheet_name in ("GF", "SEF"):
+        sheet = workbook[sheet_name]
+        sheet["E5"] = period_label(date_from, date_to)
+        for row_index in range(9, 22):
+            for col_index in (3, 5, 7, 9):
+                sheet.cell(row_index, col_index).value = 0
+
+    for sheet_name, row_index, col_index, value in rows[1:]:
+        workbook[sheet_name].cell(row_index, col_index).value = excel_value(value)
+
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(rows) - 1 if rows else 0, output_path
+
+
+def write_abstract_general_collections_workbook(rows, daily_rows, output_path, date_from, date_to):
+    workbook = load_workbook(TEMPLATE_DIR / "ABSTRACT_OF_GENERAL_COLLECTIONS.xlsx")
+    data_sheet = workbook["data"]
+    daily_sheet = workbook["daily_collection"]
+    data_sheet["K4"] = period_label(date_from, date_to)
+
+    for index, row_values in enumerate(rows[1:], start=8):
+        for col_index, value in enumerate(row_values, start=1):
+            data_sheet.cell(index, col_index).value = excel_value(value)
+
+    for index, row_values in enumerate(daily_rows[1:], start=5):
+        for col_index, value in enumerate(row_values, start=1):
+            daily_sheet.cell(index, col_index).value = excel_value(value)
+
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(rows) - 1 if rows else 0, output_path
+
+
+def write_abstract_trust_funds_workbook(rows, daily_rows, output_path, date_from, date_to):
+    workbook = load_workbook(TEMPLATE_DIR / "ABSTRACT_OF_TRUST_FUNDS_COLLECTIONS.xlsx")
+    data_sheet = workbook["data"]
+    daily_sheet = workbook["daily_collection"]
+    data_sheet["H4"] = period_label(date_from, date_to)
+
+    for index, row_values in enumerate(rows[1:], start=9):
+        for col_index, value in enumerate(row_values, start=1):
+            data_sheet.cell(index, col_index).value = excel_value(value)
+
+    for index, row_values in enumerate(daily_rows[1:], start=5):
+        for col_index, value in enumerate(row_values, start=1):
+            daily_sheet.cell(index, col_index).value = excel_value(value)
+
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(rows) - 1 if rows else 0, output_path
+
+
 def summary_headers():
     return [
         "SOURCES_OF_COLLECTIONS",
@@ -367,6 +453,51 @@ def classify_summary_source(itaxtype, source_id, source_ct):
     return None
 
 
+GENERAL_ABSTRACT_COLUMNS = {
+    "Manufacturing": 4,
+    "Distributor": 5,
+    "Retailing": 6,
+    "Banks & Other Financial Int.": 7,
+    "Other Business Tax": 8,
+    "Sand & Gravel": 9,
+    "Fines & Penalties": 10,
+    "Mayor's Permit": 11,
+    "Weights & Measures": 12,
+    "Tricycle Permit Fee": 13,
+    "Occupation Tax": 14,
+    "Cert. of Ownership": 15,
+    "Cert. of Transfer": 16,
+    "Docking and Mooring Fee": 19,
+    "Sultadas": 20,
+    "Miscellaneous": 21,
+    "Registration of Birth": 22,
+    "Marriage Fees": 23,
+    "Burial Fees": 24,
+    "Correction of Entry": 25,
+    "Fishing Permit Fee": 26,
+    "Sale of Agri. Prod.": 27,
+    "Sale of Acc. Forms": 28,
+    "Water Fees": 29,
+    "Market Stall Fee": 30,
+    "Slaughterhouse Fee": 32,
+    "Rent of Equipment": 33,
+    "Doc Stamp Tax": 34,
+    "Police Clearance": 35,
+    "Secretary Fees": 36,
+    "Med./Lab. Fees": 37,
+    "Garbage Fees": 38,
+}
+
+
+TRUST_ABSTRACT_NAMES = {
+    "Building Permit Fee",
+    "Electrical Permit Fee",
+    "Zoning Fee",
+    "Livestock",
+    "Diving Fee",
+}
+
+
 def split_summary_amount(name, amount):
     amount = amount or 0
     row = [name] + [0] * 11
@@ -402,7 +533,7 @@ def split_summary_amount(name, amount):
 
 def connect_report_db(user="SYSDBA", password="masterkey"):
     return fdb.connect(
-        dsn=DB_PATH,
+        dsn=resolve_db_path(),
         user=user,
         password=password,
         charset="UTF8",
@@ -1036,6 +1167,306 @@ def sharing_row_for_classification(property_kind, class_code):
     return 26
 
 
+def provincial_rpt_row_for_detail(property_kind, class_code, actual_use):
+    property_kind = (property_kind or "").strip()
+    class_code = (class_code or "").strip().upper()
+    actual_use = (actual_use or "").strip().upper()
+
+    if property_kind == "M":
+        return 19
+
+    is_land = property_kind == "L"
+    if class_code.startswith("S") or actual_use == "ARC":
+        return 14 if is_land else 21
+    if class_code == "R" or actual_use in ("AR", "ARD"):
+        return 9 if is_land else 16
+    if class_code == "C" or actual_use == "AC":
+        return 10 if is_land else 17
+    if class_code == "I" or actual_use == "AI":
+        return 11 if is_land else 18
+    if class_code == "M" or actual_use == "AM":
+        return 12 if is_land else 19
+    if class_code == "A" or actual_use == "AA":
+        return 13 if is_land else 20
+    if class_code == "T" or actual_use == "ATF":
+        return 15 if is_land else 21
+    return 14 if is_land else 21
+
+
+def build_provincial_rpt_coding_rows_from_fdb(date_from, date_to, user, password):
+    _, current_taxyear = rpt_summary_rows_from_fdb(date_from, date_to, user, password)
+    if current_taxyear is None:
+        current_taxyear = report_year_from_date(date_from)
+
+    sql = """
+        SELECT
+            COALESCE(pcd.PROPERTYKIND_CT, prop.PROPERTYKIND_CT) AS PROPERTYKIND_CT,
+            COALESCE(pcd.CLASSCODE_CT, ra.PREDOMCLASSCODE_CT) AS CLASSCODE_CT,
+            pcd.ACTUALUSE_CT,
+            pcd.ITAXTYPE_CT,
+            pcd.CASETYPE_CT,
+            pcd.TAXYEAR,
+            SUM(pcd.AMOUNT) AS AMOUNT
+        FROM PAYMENT p
+        JOIN PAYMENTCLASSDETAIL pcd ON pcd.PAYMENT_ID = p.PAYMENT_ID
+        LEFT JOIN RPTASSESSMENT ra ON ra.TAXTRANS_ID = pcd.TAXTRANS_ID
+        LEFT JOIN PROPERTY prop ON prop.PROP_ID = ra.PROP_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND p.PAYGROUP_CT = 'RPT'
+          AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(pcd.CANCELLED_BV, 0) = 0
+          AND pcd.ITAXTYPE_CT IN ('BSC', 'SEF')
+        GROUP BY COALESCE(pcd.PROPERTYKIND_CT, prop.PROPERTYKIND_CT),
+                 COALESCE(pcd.CLASSCODE_CT, ra.PREDOMCLASSCODE_CT),
+                 pcd.ACTUALUSE_CT,
+                 pcd.ITAXTYPE_CT,
+                 pcd.CASETYPE_CT,
+                 pcd.TAXYEAR
+    """
+    values = {}
+    con = connect_report_db(user, password)
+    try:
+        cur = con.cursor()
+        cur.execute(sql, (date_from, date_to))
+        for property_kind, class_code, actual_use, tax_type, case_type, taxyear, amount in cur.fetchall():
+            tax_type = (tax_type or "").strip()
+            case_type = (case_type or "").strip()
+            sheet_name = "GF" if tax_type == "BSC" else "SEF" if tax_type == "SEF" else None
+            if sheet_name is None:
+                continue
+
+            row_index = provincial_rpt_row_for_detail(property_kind, class_code, actual_use)
+            if case_type == "PEN":
+                col_index = 7 if taxyear == current_taxyear else 9
+                value = amount or 0
+            else:
+                col_index = 3 if taxyear == current_taxyear else 5
+                if case_type == "DED":
+                    value = -abs(amount or 0)
+                else:
+                    value = amount or 0
+
+            share = Decimal("0.35") if tax_type == "BSC" else Decimal("0.50")
+            key = (sheet_name, row_index, col_index)
+            values[key] = values.get(key, Decimal("0")) + (value * share)
+        con.rollback()
+    finally:
+        con.close()
+
+    rows = [["SHEET", "ROW", "COLUMN", "VALUE"]]
+    for sheet_name in ("GF", "SEF"):
+        for row_index in range(9, 22):
+            for col_index in (3, 5, 7, 9):
+                rows.append([sheet_name, row_index, col_index, values.get((sheet_name, row_index, col_index), Decimal("0"))])
+    return rows
+
+
+def payment_detail_rows_for_abstract(date_from, date_to, user, password):
+    sql = """
+        SELECT
+            p.PAYMENT_ID,
+            p.PAYMENTDATE,
+            p.RECEIPTNO,
+            p.PAIDBY,
+            COALESCE(p.COLLECTOR, p.USERID) AS COLLECTOR_NAME,
+            p.PAYGROUP_CT,
+            pd.ITAXTYPE_CT,
+            pd.SOURCEID,
+            pd.SOURCE_CT,
+            pd.AMOUNTPAID
+        FROM PAYMENT p
+        JOIN PAYMENTDETAIL pd ON pd.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(p.PAYGROUP_CT, '') <> 'RPT'
+        ORDER BY p.PAYMENTDATE, p.RECEIPTNO, p.PAYMENT_ID, pd.RECEIPTITEMORDER
+    """
+    rows = []
+    con = connect_report_db(user, password)
+    try:
+        cur = con.cursor()
+        cur.execute(sql, (date_from, date_to))
+        for row in cur.fetchall():
+            rows.append(row)
+        con.rollback()
+    finally:
+        con.close()
+    return rows
+
+
+def add_general_abstract_amount(record, source_name, amount):
+    amount = amount or 0
+    if source_name == "Cockpit Share":
+        record[17] += amount * Decimal("0.50")
+        record[18] += amount * Decimal("0.50")
+        return True
+
+    col_index = GENERAL_ABSTRACT_COLUMNS.get(source_name)
+    if col_index is None:
+        return False
+    record[col_index] += amount
+    return True
+
+
+def build_abstract_general_collections_rows_from_fdb(date_from, date_to, user, password):
+    records = {}
+    order = []
+
+    for (
+        payment_id, payment_date, receipt_no, paid_by, collector_name, paygroup,
+        itaxtype, source_id, source_ct, amount,
+    ) in payment_detail_rows_for_abstract(date_from, date_to, user, password):
+        source_name = classify_summary_source(
+            itaxtype.strip() if isinstance(itaxtype, str) else itaxtype,
+            source_id,
+            source_ct.strip() if isinstance(source_ct, str) else source_ct,
+        )
+        if source_name in TRUST_ABSTRACT_NAMES or source_name == "Community Tax":
+            continue
+
+        if payment_id not in records:
+            records[payment_id] = {
+                "date": payment_date,
+                "receipt_no": receipt_no,
+                "paid_by": paid_by,
+                "collector": collector_name,
+                "paygroup": paygroup,
+                "amounts": {col_index: Decimal("0") for col_index in range(4, 39)},
+            }
+            order.append(payment_id)
+
+        added = add_general_abstract_amount(records[payment_id]["amounts"], source_name, amount)
+        if not added and source_name:
+            records[payment_id]["amounts"][21] += amount or 0
+
+    headers = [
+        "Date", "Receipt Number", "Names", "Manufacturing", "Distributor", "Retailing",
+        "Financial", "Other", "Sand & Gravel", "Fines & Penalties", "Mayor's Permit",
+        "W. & M.", "Trirycle Operators", "Occu.", "Cert. of Ownership", "Cert. of Transfer",
+        "Cockpit Prov. Share", "Cockpit Local Share", "Docking and Mooring Fee", "Sultadas",
+        "MISCS.", "Reg. of", "Marriage Fees", "Burial Fees", "Correction of Entry",
+        "Fishing Permit Fee", "Sale of Agri. Prod.", "Sale of Acct. Form", "Water Fees",
+        "Stall Fees", "Cash Tickets", "Slaughter House Fee", "Rental of Equipment",
+        "Doc. Stamp", "Police Clearance", "Cert.", "Med./Dent. & Lab. Fees", "Garbage Fees",
+        "CASHIER", "TOTAL", "TYPE OF RECIEPT",
+    ]
+    rows = [headers]
+    daily = {}
+
+    for payment_id in order:
+        record = records[payment_id]
+        total = sum(record["amounts"].values())
+        if total == 0:
+            continue
+        row = [
+            record["date"], record["receipt_no"], record["paid_by"],
+            *[record["amounts"].get(col_index, Decimal("0")) for col_index in range(4, 39)],
+            record["collector"], total, record["paygroup"],
+        ]
+        rows.append(row)
+
+        day = record["date"].date() if hasattr(record["date"], "date") else record["date"]
+        if day not in daily:
+            daily[day] = {col_index: Decimal("0") for col_index in range(4, 39)}
+        for col_index, value in record["amounts"].items():
+            daily[day][col_index] += value
+
+    daily_rows = [["Date"] + headers[3:38] + ["TOTAL"]]
+    for day in sorted(daily):
+        total = sum(daily[day].values())
+        daily_rows.append([day] + [daily[day].get(col_index, Decimal("0")) for col_index in range(4, 39)] + [total])
+    return rows, daily_rows
+
+
+def trust_split_values(source_name, amount):
+    amount = amount or 0
+    values = {col_index: Decimal("0") for col_index in range(4, 14)}
+    if source_name == "Building Permit Fee":
+        values[4] = amount * Decimal("0.80")
+        values[5] = amount * Decimal("0.15")
+        values[6] = amount * Decimal("0.05")
+    elif source_name == "Electrical Permit Fee":
+        values[7] = amount
+    elif source_name == "Zoning Fee":
+        values[8] = amount
+    elif source_name == "Livestock":
+        values[9] = amount * Decimal("0.80")
+        values[10] = amount * Decimal("0.20")
+    elif source_name == "Diving Fee":
+        values[11] = amount * Decimal("0.40")
+        values[12] = amount * Decimal("0.30")
+        values[13] = amount * Decimal("0.30")
+    return values
+
+
+def build_abstract_trust_funds_rows_from_fdb(date_from, date_to, user, password):
+    records = {}
+    order = []
+
+    for (
+        payment_id, payment_date, receipt_no, paid_by, collector_name, paygroup,
+        itaxtype, source_id, source_ct, amount,
+    ) in payment_detail_rows_for_abstract(date_from, date_to, user, password):
+        source_name = classify_summary_source(
+            itaxtype.strip() if isinstance(itaxtype, str) else itaxtype,
+            source_id,
+            source_ct.strip() if isinstance(source_ct, str) else source_ct,
+        )
+        if source_name not in TRUST_ABSTRACT_NAMES:
+            continue
+
+        if payment_id not in records:
+            records[payment_id] = {
+                "date": payment_date,
+                "receipt_no": receipt_no,
+                "paid_by": paid_by,
+                "collector": collector_name,
+                "paygroup": paygroup,
+                "amounts": {col_index: Decimal("0") for col_index in range(4, 14)},
+            }
+            order.append(payment_id)
+
+        split_values = trust_split_values(source_name, amount)
+        for col_index, value in split_values.items():
+            records[payment_id]["amounts"][col_index] += value
+
+    headers = [
+        "Date", "Receipt Number", "Names", "Building Fee 80% Local",
+        "Building Fee 15% T.F.", "Building Fee 5% Nat'L.", "Electrical Fee",
+        "Zoning Fee", "Livestock 80% Local", "Livestock 20% Nat'l",
+        "Diving 40% GF", "Diving 30% Fishers", "Diving 30% Brgy",
+        "CASHIER", "Total", "TYPE OF RECIEPT",
+    ]
+    rows = [headers]
+    daily = {}
+
+    for payment_id in order:
+        record = records[payment_id]
+        total = sum(record["amounts"].values())
+        if total == 0:
+            continue
+        row = [
+            record["date"], record["receipt_no"], record["paid_by"],
+            *[record["amounts"].get(col_index, Decimal("0")) for col_index in range(4, 14)],
+            record["collector"], total, record["paygroup"],
+        ]
+        rows.append(row)
+
+        day = record["date"].date() if hasattr(record["date"], "date") else record["date"]
+        if day not in daily:
+            daily[day] = {col_index: Decimal("0") for col_index in range(4, 14)}
+        for col_index, value in record["amounts"].items():
+            daily[day][col_index] += value
+
+    daily_rows = [["DATE"] + headers[3:13] + ["Total"]]
+    for day in sorted(daily):
+        total = sum(daily[day].values())
+        daily_rows.append([day] + [daily[day].get(col_index, Decimal("0")) for col_index in range(4, 14)] + [total])
+    return rows, daily_rows
+
+
 def build_summary_sharing_rows_from_fdb(date_from, date_to, user, password):
     buckets, current_taxyear = rpt_summary_rows_from_fdb(date_from, date_to, user, password)
     if current_taxyear is None:
@@ -1113,6 +1544,16 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         rows = build_advance_rpt_record_rows_from_fdb(date_from, date_to, user, password)
     elif number == 27:
         rows = build_summary_sharing_rows_from_fdb(date_from, date_to, user, password)
+    elif number == 28:
+        rows = build_provincial_rpt_coding_rows_from_fdb(date_from, date_to, user, password)
+    elif number == 29:
+        rows, daily_rows = build_abstract_general_collections_rows_from_fdb(
+            date_from, date_to, user, password
+        )
+    elif number == 30:
+        rows, daily_rows = build_abstract_trust_funds_rows_from_fdb(
+            date_from, date_to, user, password
+        )
     else:
         raise RuntimeError(f"Unsupported FDB template report {number}.")
     if number in (21, 22, 23):
@@ -1123,6 +1564,16 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         return write_advance_rpt_record_workbook(rows, output_path, date_from, date_to)
     if number == 27:
         return write_summary_sharing_workbook(rows, output_path, date_from, date_to)
+    if number == 28:
+        return write_provincial_rpt_coding_workbook(rows, output_path, date_from, date_to)
+    if number == 29:
+        return write_abstract_general_collections_workbook(
+            rows, daily_rows, output_path, date_from, date_to
+        )
+    if number == 30:
+        return write_abstract_trust_funds_workbook(
+            rows, daily_rows, output_path, date_from, date_to
+        )
     return write_csv_rows(output_path, rows)
 
 
@@ -1187,7 +1638,7 @@ def main():
         raise RuntimeError("Refusing to run a non-SELECT statement.")
 
     connection = fdb.connect(
-        dsn=DB_PATH,
+        dsn=resolve_db_path(),
         user=args.user,
         password=args.password,
         charset="UTF8",

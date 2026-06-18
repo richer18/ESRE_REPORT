@@ -401,13 +401,13 @@ Daily totals in daily_collection
   should equal grouped totals from the data sheet by date.
 ```
 
-## Recommended Implementation Process
+## Implemented Process
 
-Recommended future automation:
+Implemented in `run_collection_query.py`:
 
 ```text
-1. Add Report 29 for Abstract of General Collections.
-2. Add Report 30 for Abstract of Trust Funds Collections.
+1. Report 29 for Abstract of General Collections.
+2. Report 30 for Abstract of Trust Funds Collections.
 3. Reuse `classify_summary_source()` for source-to-column mapping.
 4. Reuse `split_summary_amount()` for split/shared collection rules.
 5. Build receipt-level rows first in `data`.
@@ -415,4 +415,4 @@ Recommended future automation:
 7. Reconcile generated totals to Reports 21/22/17 before printing.
 ```
 
-Do not automate until the open mapping items above are confirmed.
+Open mapping items above should still be confirmed with the Treasurer/Accounting offices.

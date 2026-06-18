@@ -499,7 +499,7 @@ Before using the report for remittance:
 
 ## Draft SELECT-Only Query Logic
 
-This is draft logic for future automation. It is not yet implemented as a report runner.
+This was the draft query logic used as the basis for implementing Report 28 in `run_collection_query.py`.
 
 ```sql
 SELECT
@@ -555,8 +555,10 @@ Before coding the exporter, use Report 27 as the sharing authority and ask Provi
 5. Should the Provincial RPT Coding report reconcile directly to Report 27 provincial-share totals before printing/submission?
 ```
 
-Once confirmed, this can become:
+This is now implemented as:
 
 ```text
 28. Provincial RPT Coding / Province Remittance Report
 ```
+
+Open mapping items should still be reviewed with the Province/Treasurer/Accounting offices.

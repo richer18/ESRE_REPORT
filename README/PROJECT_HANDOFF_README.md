@@ -164,7 +164,9 @@ Report 24 exports CSV RPT detail summary.
 
 Reports 25 to 27 generate Excel files using uploaded RPT templates.
 
-Reports 28 to 30 are analyzed/proposed template reports and are not yet implemented in the runner.
+Reports 28 to 30 generate Excel files using uploaded templates.
+
+`python .\run_collection_query.py --list` includes reports 1 to 30.
 
 ## Firebird Tables Learned
 
@@ -592,7 +594,7 @@ SEF net from inputs: 2,410,108.23
 Grand net from inputs: 4,820,216.46
 ```
 
-## Proposed Report 28: Provincial RPT Coding / Province Remittance Report
+## Report 28: Provincial RPT Coding / Province Remittance Report
 
 Analysis file:
 
@@ -682,7 +684,7 @@ Report 25 Basic/SEF totals should agree with the raw BSC/SEF buckets used in Rep
 Report 27 Provincial Share totals should agree with Report 28 GF and SEF remittance/coding totals.
 ```
 
-Do not automate this report until these mapping issues are confirmed:
+Report 28 is implemented in `run_collection_query.py`, but these mapping issues should still be confirmed:
 
 ```text
 1. Where SPECIAL/SCIENTIFIC/S* classifications should be placed.
@@ -692,7 +694,19 @@ Do not automate this report until these mapping issues are confirmed:
 5. Report 28 should reconcile to Report 27 Provincial Share totals before printing/submission.
 ```
 
-## Proposed Reports 29-30: Abstract Collection Templates
+January 2026 implementation test:
+
+```text
+Command: python .\run_collection_query.py 28 2026-01-01 2026-01-31
+Output: firebird_metadata\output\query_28_2026-01-01_to_2026-01-31.xlsx
+GF/BSC provincial share total: 843,537.880500
+SEF provincial share total: 1,205,054.11500
+These match the expected provincial shares from Report 27/Report 25 basis:
+- BSC net 2,410,108.23 x 35 percent
+- SEF net 2,410,108.23 x 50 percent
+```
+
+## Reports 29-30: Abstract Collection Templates
 
 Analysis file:
 
@@ -758,6 +772,26 @@ Open mapping items:
 3. Confirm whether Electrical and Zoning should remain unsplit.
 4. Confirm whether Building Fee should include PFB, BUF, and INS.
 5. Confirm if daily_collection should be formula-driven from data or generated directly from Firebird.
+```
+
+January 2026 implementation test:
+
+```text
+Report 29 command: python .\run_collection_query.py 29 2026-01-01 2026-01-31
+Output: firebird_metadata\output\query_29_2026-01-01_to_2026-01-31.xlsx
+Receipt-level rows: 3,882
+Daily rows: 23
+Data total: 4,898,687.21
+Daily total: 4,898,687.21
+Difference: 0.00
+
+Report 30 command: python .\run_collection_query.py 30 2026-01-01 2026-01-31
+Output: firebird_metadata\output\query_30_2026-01-01_to_2026-01-31.xlsx
+Receipt-level rows: 836
+Daily rows: 23
+Data total: 632,496.20
+Daily total: 632,496.20
+Difference: 0.00
 ```
 
 ## Sources Of Collections Used In Report 17
