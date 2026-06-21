@@ -155,6 +155,8 @@ Current report list:
 29. Abstract of General Collections
 30. Abstract of Trust Funds Collections
 31. Full Report Collections
+32. CMCI Annex A-B Business Permit Registration Report
+33. Tax on Business Summary from BPLS Business Tax
 ```
 
 Reports 1 to 20 mostly export CSV from SELECT-only SQL.
@@ -169,7 +171,11 @@ Reports 28 to 30 generate Excel files using uploaded templates.
 
 Report 31 generates an Excel file using the uploaded Full Report Collections template. `DUE FROM` is manual and remains editable in the generated workbook.
 
-`python .\run_collection_query.py --list` includes reports 1 to 31.
+Report 32 generates an Excel file using the uploaded CMCI Annex A-B template.
+
+Report 33 generates a Tax on Business Excel summary from BPLS Business Tax and Surcharge.
+
+`python .\run_collection_query.py --list` includes reports 1 to 33.
 
 ## Firebird Tables Learned
 
@@ -1499,3 +1505,1130 @@ PROPERTY
 ```
 
 unless a future official posting design is fully validated and approved.
+
+## Future Web App Repository Notes
+
+Repository:
+
+```text
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ESRE_REPORT\LGU_TreasuryReportingSystem
+https://github.com/richer18/LGU_TreasuryReportingSystem
+```
+
+Planned stack:
+
+```text
+Backend: Laravel REST API
+Frontend: React/Vite
+Runner: Python reporting/import jobs
+Server runner: local startup helpers for Laravel/React development servers
+Docs: documentation, workflow notes, table mapping, formulas, and report rules
+Database/reporting source: Firebird .FDB first, future MySQL import/cache layer
+Rule: all Python scripts for the future web app must be saved in LGU_TreasuryReportingSystem\runner.
+```
+
+Initial hygiene/API setup completed:
+
+```text
+Root .gitignore added for Laravel, React, local databases, generated reports, node_modules, vendor, and environment files.
+Frontend axios dependency installed.
+Laravel API routing enabled in backend/bootstrap/app.php.
+Root README.md added to explain folder responsibilities.
+docs/ARCHITECTURE.md added for system architecture.
+runner/README.md added for Python runner purpose and safety rules.
+server_runner/README.md added for local server helper purpose.
+server_runner batch files added:
+- server_menu.bat
+- start_backend.bat: starts Laravel API on 127.0.0.1:8000
+- start_frontend.bat: starts React/Vite on 127.0.0.1:5173
+- start_all.bat: starts both servers
+- check_ports.bat: checks backend/frontend ports
+Initial backend/routes/api.php added with:
+- GET /api/health
+- GET /api/reports
+- GET /api/reports/{number}
+Report catalog module started:
+- app/Reports/ReportCatalog.php
+- app/Http/Controllers/Api/ReportCatalogController.php
+git_hub_updater scripts improved:
+- GIT_OPTIONAL_LOCKS=0 added to reduce OneDrive Git lock issues.
+- Push/pull scripts now require the current branch to be main.
+- Push script fetches GitHub first and blocks if remote main has changes missing locally.
+- Pull script blocks when local changes exist.
+- git_hub_updater/README.md added.
+Firebird connection bridge started:
+- PHP installation does not currently include pdo_firebird/interbase.
+- Laravel backend connects to Firebird through Python runner first.
+- runner/firebird_probe.py uses read-only Firebird settings: READ_COMMITTED_RO, no_db_triggers, no_gc.
+- All future Python scripts for this app must be placed under runner/.
+- backend/config/firebird.php stores connection settings.
+- backend/app/Services/FirebirdProbeService.php calls the Python probe.
+- backend/app/Http/Controllers/Api/FirebirdStatusController.php exposes GET /api/firebird/status.
+- backend/routes/console.php exposes php artisan firebird:status.
+- Verified against C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB: ok=true, 237 user tables, 1 view.
+Frontend Firebird status display added:
+- frontend/src/App.jsx now calls GET /api/firebird/status through the axios instance.
+- frontend/src/App.css and frontend/src/index.css now show a simple database connection dashboard.
+- Frontend displays Connected/Disconnected, user table count, view count, bridge mode, database path, client library, and sample tables.
+- Verified npm run build and confirmed frontend http://127.0.0.1:5173 is running.
+- API CORS response allows frontend origin.
+- If Vite shows a stale missing App.css import overlay, restart the frontend with server_runner/start_frontend.bat; it now uses --force to rebuild Vite cache.
+Frontend UI/UX shell added:
+- Dashboard page added with Firebird connection status and database metrics.
+- Sidebar navigation added for Dashboard, General Fund, Trust Fund, Community Tax, Real Property Tax, and Settings.
+- Fund report pages added with date range controls and grouped report lists.
+- Temporary Reports master button/page added to the sidebar with report list 1-31.
+- Settings page added with API/frontend connection paths and Python runner rule.
+- lucide-react installed for sidebar and page icons.
+- Verified npm run lint and npm run build.
+Laravel/React authentication implemented:
+- laravel/sanctum installed for REST API bearer-token authentication.
+- backend/app/Http/Controllers/Api/AuthController.php added.
+- backend/routes/api.php now includes POST /api/login, GET /api/user, and POST /api/logout.
+- backend/app/Models/User.php now uses Sanctum HasApiTokens.
+- backend/config/permissions.php added for role permission lists.
+- User auth profile migration added: role and account_status.
+- Sanctum personal_access_tokens migration added.
+- Default local admin seed added: admin@zamboanguita.local / admin123.
+- Frontend AuthProvider/useAuth/authStorage added under frontend/src/auth.
+- Frontend page code was split by folder to keep files maintainable:
+  - frontend/src/pages/Login/LoginPage.jsx
+  - frontend/src/pages/Dashboard/DashboardPage.jsx
+  - frontend/src/pages/Reports/ReportsPage.jsx
+  - frontend/src/pages/Settings/SettingsPage.jsx
+  - frontend/src/data/reportCatalog.js
+  - frontend/src/utils/firebirdStatus.js
+- frontend/src/axiosinstance/axiosInstance.js now attaches Authorization: Bearer token and clears token on 401.
+- frontend/src/App.jsx login now calls Laravel /api/login, persists token in localStorage, validates saved session through /api/user, and logs out through /api/logout.
+- Laravel auth SQLite DB uses C:\Users\LIFT-LAPTOP\AppData\Local\Temp\lgu_treasury_auth.sqlite because SQLite schema writes under the OneDrive project folder caused disk I/O/journal errors.
+- Firebird remains the reporting source and is still accessed read-only through the Python runner bridge.
+- Verified API login/user/logout through HTTP, php artisan test, npm run lint, and npm run build.
+```
+
+The initial report registry mirrors the current ESRE report list 1-31. Reports 21-31 are marked as implemented in the Python/FDB reporting script, while 1-17 remain source-query/planning items and 18-20 are process documentation.
+
+Current git caution: if .git/index.lock appears again, close Git/GitHub Desktop/VS Code Git operations first. Delete the lock file only when no git.exe process remains.
+
+## Existing ETMS Reference Review
+
+Reviewed old system in read-only mode:
+
+```text
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ElectronicTreasurerManagementSystem\frontend
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ElectronicTreasurerManagementSystem\backend
+```
+
+Important: do not run MySQL on this laptop for the old ETMS because it may conflict with LIFT server ports.
+
+The old system is useful as a workflow/reference source:
+
+```text
+Laravel 12 backend with Sanctum login
+React CRA frontend with Material UI/Toolpad dashboard
+Role and module permission middleware
+General Fund, Trust Fund, Community Tax, Real Property Tax modules
+Full Report / RCD / ESRE / Summary reports
+RCD accountable forms and receipt range workflows
+Dashboard charts and collector summaries
+Python scraper/tools folders for old MySQL import workflow
+```
+
+New-system decision:
+
+```text
+Use old ETMS concepts only.
+Do not copy MySQL dependency or old scraper folder layout.
+All Python in new system still belongs in LGU_TreasuryReportingSystem\runner.
+New system remains Firebird-read-only first through Laravel REST API + Python runner.
+```
+
+Detailed note saved:
+
+```text
+firebird_metadata\existing_etms_system_review.md
+```
+
+## Old ETMS General Fund Reference Review
+
+Reviewed old General Fund module in read-only mode:
+
+```text
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\ElectronicTreasurerManagementSystem\frontend\src\FRONTEND\components\ABSTRACT\GF
+```
+
+Main useful patterns:
+
+- GF page has month/year filters, search, add/edit/view/delete actions, daily report, financial report, receipt/collector report, dashboard total cards, and Excel export.
+- Payment entry uses header fields: date, taxpayer/name, receipt number, receipt type, cashier, local TIN.
+- Payment details are source/rate rows: source_id, description, amount.
+- Total is sum of detail amounts.
+- Cash Tickets has an old workflow rule: auto receipt number `00YYYYMMDD`.
+- GF report categories include Total Revenue, Tax on Business, Regulatory Fees, Receipts from Economic Enterprises, and Service/User Charges.
+- SOC/financial report uses source fields matching ESRE source names, including Cockpit_Prov_Share and Cockpit_Local_Share.
+- Old formula separates cockpit provincial share: municipal total = total - cockpit provincial share.
+- Collector receipt report supports date range, month/year, collector, report type, and receipt range filters.
+
+Detailed note saved:
+
+```text
+firebird_metadata\old_etms_general_fund_review.md
+```
+
+## New LGU Treasury System - General Fund UI/API Implemented
+
+Implemented a component-based General Fund page in the new React/Laravel app:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\GeneralFundPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\hooks\useGeneralFundData.js
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\utils\generalFundFormat.js
+```
+
+Frontend components:
+
+- `GeneralFundFilters` - date range, collector, receipt range, refresh.
+- `GeneralFundSummaryCards` - total GF, receipt count, collector count, receipt reference.
+- `GeneralFundActionStrip` - opens secondary report views in dialogs.
+- `GeneralFundDialog` - reusable dialog shell for General Fund report views.
+- `GeneralFundCategoryBreakdown` - dialog body for Tax on Business, Regulatory Fees, Receipts from Economic Enterprises, Service/User Charges, Miscellaneous.
+- `GeneralFundDailyTable` - dialog body for daily totals.
+- `GeneralFundSourceBreakdown` - dialog body for top source/revenue code totals.
+- `GeneralFundReceiptReport` - dialog body for collector/receipt filter report.
+- `GeneralFundCollectionsTable` - receipt-level collection table.
+
+UI decision:
+
+- The main General Fund page should stay clean: filters, summary cards, action buttons, and receipt-level collections table.
+- Default General Fund date filter should start on the first day of the current month and end on today.
+- Main General Fund collections table should have client-side pagination with 10/25/50 rows per page.
+- Category Breakdown, Collector Receipt Report, Daily Collection, and Source Breakdown should only appear after clicking their action button, inside a dialog.
+- Dialog contents should use scrollable table layouts with sticky table headers, not card/list blocks, because LGU report review requires scanning many rows.
+- All current General Fund tables under `frontend/src/pages/GeneralFund` should use MUI table components, not raw HTML `<table>` or custom div-grid tables.
+- General Fund main page performance note:
+  - Avoid loading every secondary report on initial page open.
+  - Initial load should fetch only summary, main collections, and collectors.
+  - Heavy secondary reports such as Source Breakdown and Daily Collection should load when their dialog/report view is opened.
+  - Reason: every General Fund endpoint currently starts a Python Firebird runner process and scans/classifies `PAYMENT` + `PAYMENTDETAIL`; calling many endpoints at once makes the main table slower.
+- General Fund report dialogs should use a wider reusable dialog width up to 1280px so MUI tables fit better before horizontal scrolling.
+- Main General Fund Collections table should use MUI `Table` components and show columns in this order:
+  - Date
+  - Taxpayer
+  - Receipt
+  - Collector
+  - Total
+  - Action
+- General Fund collection results should be ordered by collection date ascending, then receipt number ascending.
+- Main General Fund Collections action column should show `View` and `Update`.
+- `View` and `Update` dialogs should visually follow the old ETMS `GF\GeneralFund.jsx` main-table popup style:
+  - wide MUI dialog
+  - gradient title/header
+  - payment header summary
+  - detail/table section
+  - clean action buttons
+- `View` opens a read-only collection detail dialog.
+- `Update` opens a form-style update dialog only; save remains disabled and no Firebird write should happen until an official update workflow is designed.
+- Collector Receipt Report should follow the old ETMS `GenerateReport.jsx` / `ReceiptCollectionReportDialog.jsx` workflow:
+  - filter by daily/date range or by month/year
+  - choose collector/cashier
+  - optionally filter receipt number from/to
+  - show Date, Collector, Receipt Type, Receipt No., Taxpayer, Lines, and Total in a paginated table
+  - show total collection for the result set
+  - allow CSV download of the result
+  - treat AMABELLA General Fund rows as Cash Tickets in the displayed receipt type
+- The new app translates the old POST `generate-report` behavior into a read-only REST GET call to `/api/general-fund/receipt-report`.
+- Daily Collection should follow the old ETMS `GF\TableData\DailyTable.jsx` workflow:
+  - choose month and year
+  - load daily General Fund summary rows
+  - show daily category columns for Tax on Business, Regulatory Fees, Receipts From Economic Enterprise, Service/User Charges, Miscellaneous, receipt count, and total
+  - show a grand total row and summary totals
+  - use MUI `Table`, `TableContainer`, `TablePagination`, and related MUI table components
+  - paginate the main daily table with 5/10/25 rows per page
+  - provide CSV download
+  - provide a read-only `View` action per date that opens receipt-level transaction details with pagination
+  - do not implement old ETMS comment save/edit actions in the new app yet because the current Firebird reporting bridge is read-only
+- The daily Firebird runner output now includes category totals in addition to receipt count, receipt range, and day total.
+- Frontend auth now dispatches an `auth:unauthorized` event on API 401 responses so the app state returns to login instead of leaving stale pages that show raw `Unauthenticated` API text.
+
+Implemented read-only Firebird runner:
+
+```text
+LGU_TreasuryReportingSystem\runner\general_fund_readonly.py
+```
+
+Runner logic:
+
+- Connects using the existing Firebird read-only connection helper.
+- Uses `PAYMENT` + `PAYMENTDETAIL` + `T_ITAXTYPE`.
+- General Fund classification now follows Report 29, Abstract of General Collections:
+  - pull non-void, non-RPT payment details from `PAYMENT` + `PAYMENTDETAIL`
+  - classify lines with the same `classify_summary_source()` rules used by Report 29
+  - exclude Community Tax lines
+  - exclude Trust Abstract names: Building Permit Fee, Electrical Permit Fee, Zoning Fee, Livestock, Diving Fee
+  - do not rely only on `PAYMENTDETAIL.FUNDTYPE_CT = 'GF'` because some valid General Fund rows have blank detail fund type
+- Returns JSON only; no database write.
+
+Implemented Laravel service/controller/routes:
+
+```text
+LGU_TreasuryReportingSystem\backend\app\Services\GeneralFundReportService.php
+LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\GeneralFundController.php
+```
+
+Protected API endpoints under Sanctum auth:
+
+```text
+GET /api/general-fund/summary
+GET /api/general-fund/collections
+GET /api/general-fund/daily
+GET /api/general-fund/sources
+GET /api/general-fund/collectors
+GET /api/general-fund/receipt-report
+GET /api/general-fund/payment-details/{paymentId}
+```
+
+Latest General Fund collection detail update:
+
+- Main General Fund table keeps `Date | Taxpayer | Receipt | Collector | Total | Action`.
+- `View` and `Update` now call a read-only `payment-details` runner report by `PAYMENT.PAYMENT_ID`.
+- Main General Fund collections are now grouped by receipt/date/taxpayer/collector instead of raw `PAYMENT_ID` only. This avoids duplicate receipt rows when Firebird has sibling payment headers for the same OR number.
+- Verified duplicate examples:
+  - receipt `9808707` on `2026-01-05` had two Firebird `PAYMENT_ID` rows (`AF51` and `AF56`) and now appears once in the main table with `line_count = 2`
+  - receipt `9808708` on `2026-01-05` also had two Firebird `PAYMENT_ID` rows and now appears once
+- For `2026-01-01` to `2026-01-31`, exact audit found 8 true duplicate receipt groups before grouping and 0 duplicate receipt rows after grouping:
+  - `9808707`, `9808708`, `9811795`, `9810739`, `9813000`, `9814308`, `0034551`, `9814099`
+- The View/Update detail endpoint receives receipt/date/taxpayer/collector filters so it can still show all child payment lines under the grouped receipt.
+- The detail dialog now displays the actual paid source line from `PAYMENTDETAIL` classification, for example `Water Fees`, instead of the old generic `General Fund payment total`.
+- Description is now treated as parent/child:
+  - parent = report source bucket from Report 29 classification, for example `Med./Lab. Fees`
+  - child = `PAYMENTDETAIL.SOURCEID` lookup description from `T_OTHERPAYMENTRATE.OPRATE_ID`, for example `Source 918 - URINALYSIS FEE`
+  - sample verified receipt `9808709` on `2026-01-05`: parent `Med./Lab. Fees`, children `URINALYSIS FEE` and `STOOL LABORATORY/FECALYSIS FEE`
+- The detail breakdown table no longer includes a `Collector` column; collector remains available in the main table/header context.
+- The General Fund View dialog was reduced from a wide 1100px layout to a more compact 820px layout.
+- `Update` remains a read-only prepared layout; saving is still disabled until an official edit/posting process is approved.
+
+Verified for `2026-01-01` to `2026-01-31`:
+
+```text
+General Fund total: 4,898,687.21
+Receipt count: 3,882
+Collector count: 5
+Category count: 5
+Daily rows: 23
+Source rows: 30
+Collectors: 5
+```
+
+Notes:
+
+- Some receipt numbers in Firebird are text-like values such as `NOV. 2025`, so receipt references must be displayed as text, not treated as purely numeric ranges.
+- This is read-only reporting. Add/edit/delete General Fund payment workflows from the old ETMS were analyzed but intentionally not implemented in the new app.
+- Verified `npm run lint`, `npm run build`, direct Python runner, protected API smoke tests, and browser UI checks for Collector Receipt Report / Daily Collection.
+
+General Fund UI update:
+
+- Removed the `Receipt Reference` summary card.
+- Category Breakdown now has its own date filter and a `Total Overall` footer row.
+- `Miscellaneous` category is treated under `Regulatory Fees` for General Fund category reporting.
+- General Fund View/Update detail descriptions now show the child/source fee description only, for example `WATER PAYMENT FEE`; the parent label `Water Fees`, `Source 815`, and detail `Receipt Type` column were removed from the detail table.
+
+- Removed the General Fund summary cards row (`Total General Fund`, `Receipts`, and `Collectors`) from the General Fund page.
+
+- Added a `Total Overall` footer row to the General Fund Source Breakdown dialog.
+
+- Added a Month / Year filter to the General Fund Source Breakdown dialog.
+
+- Reports page now has a Month and Year filter plus per-report Download buttons. Current download output is a CSV metadata/manifest file for the selected month while backend Excel/PDF report generation is still pending.
+
+- Reports page Generate workflow updated: report rows 21 to 31 now use `Generate`; generated preview appears below using an official report-template style with Download and Print buttons.
+
+- Reports page simplified: removed the visible master table/date range text. UI now shows Report title, Month and Year, a report dropdown under Generate Report, and a single Generate Report button. Dropdown includes reports 21-31 plus an Other Reports group for 1-20.
+
+- Generated report preview now uses template-specific Excel-style layouts based on files in `LGU_TreasuryReportingSystem/template`, including Summary of Collections, RPT records, Abstracts, Sharing, Provincial Coding, and Full Report shapes.
+
+- Reports page Generate workflow is now connected to real Firebird read-only preview data for Summary reports:
+  - New runner: `LGU_TreasuryReportingSystem\runner\report_preview_readonly.py`
+  - New Laravel service: `LGU_TreasuryReportingSystem\backend\app\Services\ReportPreviewService.php`
+  - New Laravel controller: `LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\GeneratedReportController.php`
+  - New protected endpoint: `GET /api/generated-reports/{number}/preview?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+  - Frontend file updated: `LGU_TreasuryReportingSystem\frontend\src\pages\Reports\ReportsPage.jsx`
+  - Config key added: `firebird.report_preview_script`
+- Currently connected reports:
+  - Report 21: Summary of Collection
+  - Report 22: Summary of Collection no RPT
+  - Report 23: Summary of Collection RPT
+  - Report 24 uses the same RPT summary runner shape as Report 23 while the more detailed SUMMARY-sheet mapping is still pending.
+- The Generate button now calls the Laravel API, Laravel calls the Python runner, and the Python runner queries `.FDB` in read-only mode using `firebird_probe.connect()`.
+- The preview table no longer depends on placeholder `RESULT` values for reports 21-24 when the API returns data.
+- January 2026 verification:
+  - Report 21 total collections from runner: `10,549,979.15`
+  - Report 23 RPT total from runner: `4,820,216.46`
+  - These match earlier handoff totals.
+- Build/route verification:
+  - `php -l app\Services\ReportPreviewService.php` passed
+  - `php -l app\Http\Controllers\Api\GeneratedReportController.php` passed
+  - `php artisan route:list --path=generated-reports` shows `GET api/generated-reports/{number}/preview`
+  - `npm run build` passed
+
+- Summary of Collection preview UI header was revised to match the Excel template:
+  - `Sources of Collections`, `Total Collections`, and `National` now use two-row vertical header cells.
+  - `Provincial` now spans `General Fund`, `Special Educ. Fund`, and `Total`.
+  - `Municipal` now spans `General Fund`, `Special Educ. Fund`, `Trust Fund`, and `Total`.
+  - `Barangay Share` and `Fisheries` now use two-row vertical header cells.
+  - Verified again with `npm run build`.
+
+- Reports page Download button now downloads a generated `.xlsx` file instead of a CSV placeholder for Summary reports:
+  - New runner: `LGU_TreasuryReportingSystem\runner\report_excel_export_readonly.py`
+  - New config key: `firebird.report_excel_script`
+  - New protected endpoint: `GET /api/generated-reports/{number}/download?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
+  - Frontend `Download` now requests the endpoint as a blob and saves the Excel file locally.
+  - Current Excel download support covers reports 21, 22, 23, and 24.
+  - The exporter uses the uploaded templates in `LGU_TreasuryReportingSystem\template` and fills real `.FDB` data.
+  - January 2026 test export verified:
+    - workbook period cell: `Month of January 2026`
+    - Retailing row: `2,800`
+    - TOTAL row: `10,549,979.15`
+  - Verified with Python workbook readback, PHP syntax checks, `php artisan route:list --path=generated-reports`, and `npm run build`.
+
+- Summary of Collection preview table was improved again for Excel-like column balance:
+  - Added fixed `colgroup` widths to the Summary table.
+  - Widened the Summary preview sheet to a landscape-style `1380px`.
+  - Balanced Provincial and Municipal child columns so `General Fund` no longer stretches too wide.
+  - Right-side columns (`Trust Fund`, `Total`, `Barangay Share`, `Fisheries`) are kept visible in the preview area.
+  - Verified with `npm run build`.
+
+- Fixed Report Download 500 error:
+  - Symptom: clicking `Download` returned `Request failed with status code 500`.
+  - Root cause: Laravel/Herd launched `C:\Python314\python.exe`, but the PHP child process did not include the Python user-site package directory where `openpyxl` is installed:
+    `C:\Users\LIFT-LAPTOP\AppData\Roaming\Python\Python314\site-packages`
+  - Fixes applied:
+    - `backend\config\firebird.php` now hard-prefers `C:\Python314\python.exe` when present.
+    - `backend\app\Services\ReportPreviewService.php` now injects `PYTHONPATH` for the Python user-site packages.
+    - `runner\report_excel_export_readonly.py` now also appends the user-site package path before importing `openpyxl`.
+    - `frontend\src\pages\Reports\ReportsPage.jsx` now parses blob error responses so future backend JSON errors display readable messages.
+  - Verified actual authenticated HTTP download:
+    - Endpoint: `GET /api/generated-reports/21/download?date_from=2026-01-01&date_to=2026-01-31`
+    - Result: `.xlsx` file downloaded successfully, size about 9.3 KB.
+    - Workbook readback still confirmed `Month of January 2026`, `Retailing = 2,800`, `TOTAL = 10,549,979.15`.
+  - Backend was restarted and left running on `http://127.0.0.1:8000`.
+  - Verified again with PHP syntax checks, direct Python runner export, API health check, authenticated HTTP download, and `npm run build`.
+
+- Business Permit / BPLS Excel exports analyzed:
+  - Folder: `BUSINESS_PERMIT_REPORT`
+  - Files reviewed:
+    - `ABSTRACT_OF_GENERAL_COLLECTION-BPLS-ALL-2026_06_19_20_17_06.xlsx`
+    - `BUSINESS_ESTABLISHMENT-BPLS-ALL-2026_06_19_20_21_45.xlsx`
+    - `REGISTERED_BUSINESSES-BPLS-2026_06_19_20_18_01.xlsx`
+  - All three files are flat one-sheet exports with no formulas.
+  - Abstract of General Collection:
+    - Header row: 7
+    - Transaction rows: 852 plus 1 summary row
+    - Period in file: `2026-01-05` to `2026-03-31`; actual OR date range found: `2026-01-06` to `2026-03-30`
+    - Unique business IDs: 850
+    - Unique OR numbers: 851
+    - Transaction mix: 764 Renewal, 86 New, 1 Quarterly, 2 blank
+    - Transaction-only Amount Paid total: `6,582,603.21`
+    - Transaction-only Business Tax total: `4,076,164.66`
+    - One duplicate business ID: `0704625-2024-0000711`
+  - Business Establishment:
+    - Rows: 881
+    - Unique business IDs: 858
+    - Unique OR numbers: 857
+    - Application date range: `2026-01-06` to `2026-03-31`
+    - Total Amount Paid: `6,618,461.96`
+    - Missing permit rows: 25
+    - Missing OR rows: 24 with amount total `10,642.50`
+    - 12 duplicate business IDs; examples include `0704625-2024-0000021`, `0704625-2024-0001042`, `0704625-2024-0000393`
+  - Registered Businesses:
+    - Rows: 1,123
+    - Unique business IDs: 1,123
+    - Status of application: 849 For Pick-Up, 177 blank, 56 Issued, 41 Paid
+    - Registration status: 988 Renewal, 135 New
+    - Missing permit count: 177
+  - Cross-file reconciliation:
+    - All Abstract business IDs are present in Business Establishment and Registered Businesses.
+    - Business Establishment has 1 business ID not in Registered Businesses: `0704625-2024-0000467`
+    - Registered Businesses has 266 business IDs not in Business Establishment, likely unpaid/not-yet-permitted/for pick-up records.
+    - Abstract ORs not in Establishment: 0
+    - Establishment ORs not in Abstract: 6, totaling `25,216.25`
+    - Establishment total difference vs Abstract: `35,858.75`, explained by `25,216.25` extra ORs plus `10,642.50` missing-OR amount rows.
+
+- CMCI Annex A-B Business Permit Registration template analyzed:
+  - File reviewed: `BUSINESS_PERMIT_REPORT\2025-2026_ANNEX-A-B_cmci_report.xlsx`
+  - Recommended report list item: `32. CMCI Annex A-B Business Permit Registration Report`
+  - Added to `run_collection_query.py` report list as Report 32.
+  - Running Report 32 now generates an `.xlsx` output using the CMCI Annex template.
+  - Source workbooks used:
+    - `BUSINESS_PERMIT_REPORT\REGISTERED_BUSINESSES-BPLS-*.xlsx`
+    - `BUSINESS_PERMIT_REPORT\BUSINESS_ESTABLISHMENT-BPLS-*.xlsx`
+  - Workbook has 3 sheets:
+    - `Annex A (Jan. to Dec. 2025)`
+    - `Annex B (Jan. to Mar. 2026`
+    - `PSIC`
+  - The Annex sheets are blank CMCI/DTI templates with formatting and dropdown validations, not exported data.
+  - No formulas were found.
+  - Effective data-entry columns are A to P:
+    - A `LGU`
+    - B `Province`
+    - C `Region`
+    - D `Classification`
+    - E `LGU Type`
+    - F `Business Name`
+    - G-I `Business Address` parts
+    - J `Owner's Name`
+    - K `Industry / Nature of Business`
+    - L `Business Type`
+    - M `Capitalization Size`
+    - N `New / Renewal`
+    - O `Year of Registration`
+    - P `Permit No.`
+  - The `PSIC` sheet contains the allowed major industry categories, including Agriculture, Mining, Manufacturing, Wholesale/Retail, Accommodation/Food, Real Estate, Education, Health, and other major categories.
+  - Important implementation note:
+    - Columns K to N are text-sensitive and must use dropdown-approved values.
+    - `Business Type` must be normalized from BPLS values, for example `SOLE PROPRIETORSHIP` -> `Single Proprietor`.
+    - `Capitalization Size` must be computed from capital/gross thresholds: Micro, Small, Medium, Large.
+    - `Industry / Nature of Business` requires a mapping from BPLS `Line of Business` or business line code to PSIC major category.
+  - Suggested source data:
+    - Prefer `REGISTERED_BUSINESSES-BPLS` for official registration/masterlist fields.
+    - Use `BUSINESS_ESTABLISHMENT-BPLS` to enrich permit number, OR/payment, gross sales, capitalization, and application type.
+  - January to March 2026 implementation test:
+    - Command: `python .\run_collection_query.py 32 2026-01-01 2026-03-31`
+    - Output: `firebird_metadata\output\query_32_2026-01-01_to_2026-03-31.xlsx`
+    - Rows exported: `856`
+    - Target sheet filled: `Annex B (Jan. to Mar. 2026`
+  - CMCI static values confirmed/updated:
+    - Region: `REGION VII (CENTRAL VISAYAS)`
+    - Classification: `Third Class Municipality`
+  - Capitalization Size now writes the threshold text expected by the dropdown:
+    - `Micro (less than P3000000)`
+    - `Small ( P3000001 - P15000000)`
+    - `Medium (P15000001 - P100000000)`
+    - `Large (more than P100000000)`
+  - The first implementation uses heuristic PSIC mapping from BPLS line-of-business text. This should still be reviewed before official CMCI portal submission.
+
+- Report 33 Tax on Business Summary from BPLS Business Tax implemented:
+  - Command: `python .\run_collection_query.py 33 2026-01-01 2026-03-31`
+  - Output: `firebird_metadata\output\query_33_2026-01-01_to_2026-03-31.xlsx`
+  - Source files:
+    - `BUSINESS_PERMIT_REPORT\ABSTRACT_OF_GENERAL_COLLECTION-BPLS-*.xlsx`
+    - `BUSINESS_PERMIT_REPORT\BUSINESS_ESTABLISHMENT-BPLS-*.xlsx`
+  - Workbook sheets:
+    - `Summary` visible
+    - `Detail` hidden for audit
+    - `Notes` hidden for audit
+  - Visible Summary columns only:
+    - `Category`
+    - `Business Tax`
+    - `Fines & Penalties / Surcharge`
+    - `Total`
+  - Core rule:
+    - Business tax value comes from Abstract of General Collection column `Business Tax`.
+    - Fines & Penalties value comes from Abstract of General Collection column `Surcharge`.
+    - Classification uses Business Establishment `Business Nature` and `Business Line`, matched by OR Number first and Business ID fallback.
+  - Categories:
+    - Manufacturing
+    - Distributor
+    - Retailing
+    - Banks & Other Financial Int.
+    - Other Business Tax
+    - Fines & Penalties
+  - January to March 2026 verification:
+    - Visible summary rows: `6`
+    - Hidden detail rows: `773`
+    - Business Tax total: `4,076,164.66`
+    - Surcharge / Fines & Penalties total: `29,006.00`
+    - Grand total: `4,105,170.66`
+    - Category allocation:
+      - Manufacturing: `364,734.49`
+      - Distributor: `67,354.00`
+      - Retailing: `1,616,323.83`
+      - Banks & Other Financial Int.: `124,295.34`
+      - Other Business Tax: `1,903,457.00`
+      - Fines & Penalties: `29,006.00`
+  - Manual review note:
+    - The user said these categories may still be manually based on the other business tax app/database.
+    - Current implementation provides a generated starting point from BPLS Business Nature/Business Line.
+  - Reports 21 and 22 now connect to Report 33 for Tax on Business rows:
+    - Manufacturing
+    - Distributor
+    - Retailing
+    - Banks & Other Financial Int.
+    - Other Business Tax
+    - Fines & Penalties
+  - When Report 33 has BPLS data for the selected period, Reports 21 and 22 override those Tax on Business rows with BPLS Business Tax/Surcharge amounts. If no BPLS data exists for the selected period, the reports keep the original Firebird summary values.
+
+## LGU Treasury Web UI Direction - General Fund and Reports
+
+Reviewed the user's preferred UI references:
+
+```text
+C:\Users\LIFT-LAPTOP\Downloads\general_fund_ui.tsx
+C:\Users\LIFT-LAPTOP\Downloads\reports_catalog_ui.tsx
+```
+
+Adopted design direction:
+
+- Use a quiet official treasury reporting style: white panels, light slate backgrounds, deep navy headers, teal primary actions, compact typography, and structured report controls.
+- Keep the system operational and report-focused, not a marketing-style dashboard.
+- Preserve the existing Laravel API / Python runner behavior; UI polish should not change Firebird read-only reporting logic.
+
+Implemented UI updates in the new LGU Treasury frontend:
+
+- General Fund filters now use a polished toolbar panel with field icons for date and collector filters.
+- General Fund action buttons now sit beside a compact "General Fund analytics" context block.
+- General Fund dialogs now use an official dark header with icon/title grouping and a cleaner report body.
+- General Fund main collections table now has a more refined toolbar and MUI action buttons while keeping columns:
+  - Date
+  - Taxpayer
+  - Receipt
+  - Collector
+  - Total
+  - Action
+- Reports generator panel now uses the preferred report-catalog layout:
+  - Office label
+  - Month and Year selector
+  - Generate Report dropdown
+  - Generate Report button
+  - Short helper note explaining reports 21-31 preview/export behavior
+- Generated report preview toolbar now uses a spreadsheet-style Download button and Print button.
+
+Frontend files updated:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundFilters.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundActionStrip.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundDialog.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundCollectionsTable.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\Reports\ReportsPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Verification:
+
+```text
+cd LGU_TreasuryReportingSystem\frontend
+npm run build
+```
+
+Result: build passed. Vite still reports the existing large bundle warning, but no compile errors were found.
+
+## General Fund UI Update - Collector Workflow Split
+
+General Fund page design was revised toward the preferred collection-monitor layout:
+
+- Top General Fund area now shows:
+  - `Collection Monitor`
+  - `General Fund`
+  - `Generate Receipt` button
+- The filter card now follows the cleaner layout:
+  - Date From
+  - Date To
+  - Collector
+  - Refresh
+  - Receipt Range Optional
+- The old `Collector Receipt Report` action was split into two clearer workflows:
+  - `Collection per Collector` now shows collector-level totals for the active filter period.
+  - `Generate Receipt` opens the old collector receipt/date range/receipt range generator function.
+- Added a new MUI table component for collector totals:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundCollectorCollections.jsx
+```
+
+Collector totals table columns:
+
+```text
+Collector | Receipts | Share | Total Collection
+```
+
+The table includes a `Total Overall` footer.
+
+Frontend files updated:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\GeneralFundPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundActionStrip.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundFilters.jsx
+LGU_TreasuryReportingSystem\frontend\src\pages\GeneralFund\components\GeneralFundCollectorCollections.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Verification:
+
+```text
+cd LGU_TreasuryReportingSystem\frontend
+npm run build
+```
+
+Result: build passed. Existing Vite large chunk warning remains only a performance warning.
+
+Follow-up update:
+
+- `Collection per Collector` now has its own date filter inside the dialog:
+  - Date From
+  - Date To
+  - Apply Filter
+- The filter reloads collector totals from the read-only Laravel endpoint:
+
+```text
+GET /api/general-fund/collectors?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+```
+
+- The collector totals heading now shows the selected date range.
+- Verified again with `npm run build`.
+
+Generate Receipt status update:
+
+- Added `Status` column to the Generate Receipt result table.
+- Status source fields:
+  - `PAYMENT.VOID_BV`
+  - `PAYMENT.STATUS_CT`
+  - `T_STATUS.DESCRIPTION`
+- Status mapping:
+  - `VOID_BV = 1` or status description containing `VOID` -> `Void`
+  - `STATUS_CT = CNL` or status description containing `CANCEL` -> `Cancelled`
+  - otherwise -> `Paid`
+- Receipt report now includes void/cancelled receipts for audit/search visibility, but the displayed `Total Collection` sums only rows with `Status = Paid`.
+- CSV download now includes the `Status` column.
+- January 5, 2026 smoke test found a real cancelled row:
+  - receipt `2019857`
+  - `STATUS_CT = CNL`
+  - `T_STATUS.DESCRIPTION = CANCELLED`
+- Reporting rule: official collection reports and totals must be `Paid` only. Exclude cancelled and void rows from reports such as Summary of Collection, Abstracts, Full Report Collections, General Fund main collections, daily collection, source breakdown, category breakdown, and collector totals.
+- Firebird paid-only predicate for `PAYMENT`:
+  - `COALESCE(PAYMENT.VOID_BV, 0) = 0`
+  - `COALESCE(TRIM(PAYMENT.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')`
+- For RPT class/detail reporting, also keep `COALESCE(PAYMENTCLASSDETAIL.CANCELLED_BV, 0) = 0`.
+- Search Receipt and Generate Receipt audit views may still display `Cancelled` and `Void` receipts so the Treasurer staff can investigate OR status, but those rows must not be counted in official report totals.
+- Verified direct runner and frontend build:
+
+```text
+python .\LGU_TreasuryReportingSystem\runner\general_fund_readonly.py receipt-report --date-from 2026-01-05 --date-to 2026-01-05 --limit 3
+cd LGU_TreasuryReportingSystem\frontend
+npm run build
+```
+
+## Search Receipt Module
+
+Added sidebar page:
+
+```text
+Search Receipt
+```
+
+Purpose:
+
+- Search by OR / receipt number.
+- View receipt header and line details.
+- Prepare restricted update workflow for only:
+  - Assigned Collector
+  - OR Receipt No.
+
+Frontend:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\SearchReceipt\SearchReceiptPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Backend:
+
+```text
+LGU_TreasuryReportingSystem\backend\app\Services\SearchReceiptService.php
+LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\SearchReceiptController.php
+LGU_TreasuryReportingSystem\backend\routes\api.php
+```
+
+Python runner:
+
+```text
+LGU_TreasuryReportingSystem\runner\search_receipt.py
+```
+
+API endpoints:
+
+```text
+GET   /api/search-receipts?receipt_no=ORNO&limit=100
+GET   /api/search-receipts/{paymentId}
+PATCH /api/search-receipts/{paymentId}
+```
+
+Search result fields include:
+
+```text
+Date | OR Receipt | Taxpayer | Assigned Collector | Status | Total | Action
+```
+
+Status mapping follows the Generate Receipt logic:
+
+```text
+PAYMENT.VOID_BV = 1 -> Void
+PAYMENT.STATUS_CT = CNL or T_STATUS.DESCRIPTION contains CANCEL -> Cancelled
+otherwise -> Paid
+```
+
+Write safety:
+
+- Search and View are read-only.
+- PATCH endpoint is restricted to `PAYMENT.COLLECTOR` and `PAYMENT.RECEIPTNO`.
+- Actual Firebird update is disabled by default.
+- To enable only after Treasurer approval and backup/testing:
+
+```text
+FIREBIRD_ALLOW_RECEIPT_UPDATE=1
+```
+
+Verification:
+
+```text
+python .\LGU_TreasuryReportingSystem\runner\search_receipt.py search --receipt-no 9808706 --limit 3
+python .\LGU_TreasuryReportingSystem\runner\search_receipt.py update --payment-id 8BFD6D95-2B35-403A-A55E-A5B50D9FB345 --assigned-collector ricardo --new-receipt-no 9808706
+php -l app\Services\SearchReceiptService.php
+php -l app\Http\Controllers\Api\SearchReceiptController.php
+php artisan route:list --path=search-receipts
+npm run lint
+npm run build
+```
+
+Observed search test:
+
+```text
+Receipt 9808706
+Taxpayer: CADELINA PAZ
+Assigned collector: ricardo
+Status: Paid
+Total: 30.00
+```
+
+Observed update guard test:
+
+```text
+updated: false
+write_enabled: false
+message: Receipt updates are disabled. Set FIREBIRD_ALLOW_RECEIPT_UPDATE=1 only after Treasurer approval.
+```
+
+Search Receipt performance update:
+
+- Problem found: OR search was slow because the first implementation used:
+
+```text
+UPPER(TRIM(PAYMENT.RECEIPTNO)) CONTAINING UPPER(?)
+```
+
+and joined/grouped `PAYMENTDETAIL` immediately.
+
+- Optimized runner:
+  - exact `PAYMENT.RECEIPTNO = ?` lookup first so Firebird can use `IDX_PAYMENT_RECEIPTNO`
+  - trimmed exact lookup second
+  - `STARTING WITH` lookup third
+  - `CONTAINING` only as final fallback
+  - payment detail totals are fetched only for matched `PAYMENT_ID` rows
+- Frontend now trims OR input and requests only 25 rows.
+- Example OR `2019857` direct runner timing improved:
+
+```text
+Before: about 1.92 seconds
+After: about 0.24 seconds
+```
+
+- Verified OR `2019857`:
+
+```text
+Taxpayer: MAQUILING, AQUILLA CAFINO
+Assigned collector: flora
+Status: Cancelled
+Amount: 99.00
+Detail: WATER PAYMENT FEE
+```
+
+## Income Target Module
+
+Added sidebar page:
+
+```text
+Income Target
+```
+
+Source workbook:
+
+```text
+LGU_TreasuryReportingSystem\IncomeTarget\2026_Income_Target.xlsx
+```
+
+Workbook structure found:
+
+```text
+Sheet: Sheet1
+Rows: 178
+Columns: 3
+Header: Particulars | Income Target ( Approved Budget)
+```
+
+Implemented read-only Excel reader:
+
+```text
+LGU_TreasuryReportingSystem\runner\income_target_readonly.py
+```
+
+Reader dependency note:
+
+- The runner first uses `openpyxl` when that package is available.
+- If Laravel launches a Python environment without `openpyxl`, the runner now falls back to a built-in read-only `.xlsx` parser using Python standard library `zipfile` + XML parsing.
+- This fixes the backend error: `ModuleNotFoundError: No module named 'openpyxl'`.
+
+The reader preserves the workbook hierarchy by converting leading spaces in the `Particulars` text into levels:
+
+```text
+level 0 = parent/major line
+level 1 = child line
+level 2 = deeper child line
+```
+
+Implemented backend:
+
+```text
+LGU_TreasuryReportingSystem\backend\app\Services\IncomeTargetService.php
+LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\IncomeTargetController.php
+GET /api/income-target?year=2026
+```
+
+Implemented frontend:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\IncomeTarget\IncomeTargetPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Income Target page shows:
+
+- Year selector
+- Section filter
+- Search by particulars
+- Summary cards
+- Paginated target table
+
+Summary values parsed from the 2026 workbook:
+
+```text
+Tax Revenues: 8,798,637.00
+Non-Tax Revenues: 17,432,735.00
+Local Sources: 26,231,372.00
+External Sources: 189,995,172.00
+Total General Fund: 216,226,544.00
+Total Special Education Fund: 1,962,402.00
+Grand Total (GF + SEF): 218,188,946.00
+```
+
+Verification:
+
+```text
+python .\LGU_TreasuryReportingSystem\runner\income_target_readonly.py --year 2026
+php -l app\Services\IncomeTargetService.php
+php -l app\Http\Controllers\Api\IncomeTargetController.php
+php artisan route:list --path=income-target
+npm run lint
+npm run build
+```
+
+Result:
+
+```text
+Python reader ok=true
+Route available: GET api/income-target
+Frontend lint passed
+Frontend build passed
+```
+
+Income Target annual increase rule:
+
+- The Treasurer workflow uses a 10% increase every year.
+- If the selected year has its own workbook, the app reads the actual workbook values.
+- If the selected year has no workbook, the app projects from the nearest earlier available workbook using compound growth:
+
+```text
+Projected Target = Source Workbook Target x (1.10 ^ years_from_source)
+```
+
+Example verified:
+
+```text
+2026 Grand Total actual: 218,188,946.00
+2027 Grand Total projected: 240,007,840.60
+```
+
+Frontend now shows a note identifying whether the displayed target is actual workbook data or projected data.
+
+## Dashboard - Collections vs Income Target
+
+Dashboard was revised from a simple database-status screen into a Treasurer collection monitor.
+
+Purpose:
+
+- Show whether paid collections are hitting the Income Target.
+- Use existing APIs only; no new backend endpoint was required.
+- Compare paid local collections against the `Local Sources` income target, not the full grand target, because Report 21 treasury collections are local collection data while the grand target includes external sources such as NTA.
+
+Data sources:
+
+```text
+GET /api/income-target?year=YYYY
+GET /api/generated-reports/21/preview?date_from=YYYY-01-01&date_to=YYYY-MM-DD
+GET /api/generated-reports/21/preview?date_from=YYYY-MM-01&date_to=YYYY-MM-DD
+```
+
+Dashboard metrics added:
+
+- Local Collection Achievement percentage
+- YTD Paid Collections
+- Local Sources Target
+- Current-month collections
+- Monthly Target Pace
+- Expected-to-date local target
+- Variance against expected-to-date target
+- Remaining local target
+- Grand Income Target as context
+- Collection share breakdown from Report 21 total row:
+  - Municipal General Fund
+  - Municipal SEF
+  - Provincial Share
+  - Barangay / Fisheries Share
+
+Frontend files updated:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\Dashboard\DashboardPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Verification:
+
+```text
+cd LGU_TreasuryReportingSystem\frontend
+npm run lint
+npm run build
+```
+
+Result: lint passed and build passed. Existing Vite chunk-size warning may still appear but is not a compile error.
+
+Dashboard follow-up update:
+
+- Removed technical database cards from the Dashboard:
+  - Firebird .FDB Status
+  - User Tables
+  - Views
+  - Bridge Mode
+- Added Treasurer-facing collection panels:
+  - Collector Collection, showing top collectors for the selected year-to-date period
+  - Dive Tickets Monthly Collection
+  - Top 3 Dive Ticket Buyers
+  - Collections vs Income Target by source group
+- Source-group target comparison now covers:
+  - Tax on Business
+  - Regulatory Fees and Charges
+  - Receipt from Economic Enterprise
+  - Service/User Charges
+  - Other Taxes
+  - RPT
+- Dashboard compares Report 21 paid YTD collection rows against matching Income Target rows.
+- RPT dashboard actual is computed from Report 27 Summary Report Sharing, not gross RPT total.
+- RPT dashboard rule:
+  - Use only `BSC` / Basic RPT sharing.
+  - Use Land Sharing + Building Sharing.
+  - Current = current amount minus discount.
+  - Prior = prior amount.
+  - Penalties = current-year penalties + prior-year penalties.
+  - Dashboard RPT value = 40% Municipal Share from Land + Building Sharing.
+  - This follows the Treasurer rule shown in Report 27 that Basic RPT is split 35% Province, 40% Municipality, and 25% Barangay.
+- Dive tickets needed a new read-only runner/report mode because existing General Fund source reports intentionally exclude `Diving Fee` as a trust/abstract-side item.
+
+New read-only runner mode:
+
+```text
+python .\LGU_TreasuryReportingSystem\runner\general_fund_readonly.py dive-tickets --date-from YYYY-MM-DD --date-to YYYY-MM-DD
+```
+
+New API endpoint:
+
+```text
+GET /api/general-fund/dive-tickets?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+```
+
+Files updated:
+
+```text
+LGU_TreasuryReportingSystem\runner\general_fund_readonly.py
+LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\GeneralFundController.php
+LGU_TreasuryReportingSystem\backend\routes\api.php
+LGU_TreasuryReportingSystem\frontend\src\pages\Dashboard\DashboardPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+January 2026 dive-ticket smoke test:
+
+```text
+Total: 109,500.00
+Receipts: 19
+Buyers: 17
+Top buyers:
+- THE BEACH HOUSES OF DAUIN: 15,000.00
+- ATMOSPHERE RESORTS: 15,000.00
+- SEA EXPLORER: 15,000.00
+```
+
+Verification:
+
+```text
+php -l LGU_TreasuryReportingSystem\backend\app\Http\Controllers\Api\GeneralFundController.php
+php -l LGU_TreasuryReportingSystem\backend\routes\api.php
+cd LGU_TreasuryReportingSystem\frontend
+npm run lint
+npm run build
+```
+
+Result: PHP syntax passed, frontend lint passed, and frontend build passed.
+
+Dashboard chart/UI update:
+
+- Added MUI-style dashboard visualization panels without adding a new chart dependency.
+- Used existing `@mui/material` components plus custom SVG/CSS charts:
+  - MUI `Paper`
+  - MUI `Chip`
+  - MUI `LinearProgress`
+  - Custom SVG semi-gauge for Local Collection Achievement
+  - Custom donut chart for Collection Share
+  - Custom horizontal bar charts for Collector Collection and Dive Ticket Buyers
+  - Source Group Target Gauge cards for category achievement
+- Dashboard chart panels now include:
+  - Annual target gauge
+  - Collection Share donut chart
+  - Collector Collection bar chart
+  - Dive Ticket Buyers bar chart
+  - Source Group Target Gauge grid
+- Dive Tickets behavior:
+  - `Dive Tickets Monthly Collection` uses the selected/current month.
+  - `Top 3 Dive Ticket Buyers` uses the whole selected year, January 1 to December 31.
+  - This lets the monthly panel show current activity while the buyer ranking shows the strongest annual dive-ticket customers.
+- Dashboard `Collections vs Income Target by Source Group` table alignment:
+  - Source column is left-aligned.
+  - Actual, Target, Rate, and Variance headers and values are right-aligned.
+  - Numeric values use tabular number styling so currency/rate columns line up cleanly.
+
+Files updated:
+
+```text
+LGU_TreasuryReportingSystem\frontend\src\pages\Dashboard\DashboardPage.jsx
+LGU_TreasuryReportingSystem\frontend\src\App.css
+```
+
+Verification:
+
+```text
+cd LGU_TreasuryReportingSystem\frontend
+npm run lint
+npm run build
+```
+
+Result: lint passed and build passed. Existing Vite chunk-size warning may still appear, but it is not a compile error.

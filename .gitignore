@@ -19,9 +19,67 @@ google_sheet_exports/
 .codex_tmp/
 README/rendered_checklist/
 
+# Separate application repository - keep tracked in its own GitHub repo
+/LGU_TreasuryReportingSystem/
+
 # Environment and secrets
 .env
 .env.*
 
 # APP FOLDER
 LGU_TreasuryReportingSystem/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+auth.json
+
+# Dependencies
+node_modules/
+vendor/
+
+# Frontend build output
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+
+# Laravel generated/runtime files
+backend/public/build/
+backend/public/hot
+backend/public/storage
+backend/storage/*.key
+backend/storage/pail/
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/testing/*
+backend/storage/framework/views/*
+!backend/storage/**/.gitignore
+backend/.phpunit.cache/
+backend/.phpunit.result.cache
+
+# Database/runtime files
+*.sqlite
+*.sqlite-*
+*.FDB
+*.fdb
+*.GDB
+*.gdb
+
+# Generated reports and local exports
+output/
+exports/
+reports/output/
+firebird_metadata/output/
+google_sheet_exports/
+*.tmp
+*.temp
+~$*

@@ -7,7 +7,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import fdb
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 
 DEFAULT_DB_PATHS = [
@@ -19,6 +20,7 @@ SQL_FILE = Path(__file__).resolve().parent / "firebird_metadata" / "collection_a
 OUTPUT_DIR = Path(__file__).resolve().parent / "firebird_metadata" / "output"
 GOOGLE_EXPORT_DIR = Path(__file__).resolve().parent / "google_sheet_exports"
 TEMPLATE_DIR = Path(__file__).resolve().parent / "report_template"
+BUSINESS_PERMIT_DIR = Path(__file__).resolve().parent / "BUSINESS_PERMIT_REPORT"
 
 
 def resolve_db_path():
@@ -42,6 +44,8 @@ FDB_TEMPLATE_REPORTS = {
     29: "Abstract of General Collections",
     30: "Abstract of Trust Funds Collections",
     31: "Full Report Collections",
+    32: "CMCI Annex A-B Business Permit Registration Report",
+    33: "Tax on Business Summary from BPLS Business Tax",
 }
 
 
@@ -407,6 +411,585 @@ def write_full_report_collections_workbook(rows, output_path, date_from, date_to
     return len(body_rows), output_path
 
 
+def build_cmci_annex_mapping_rows(date_from, date_to):
+    return [
+        ["SECTION", "FIELD", "SOURCE / RULE", "STATUS"],
+        ["Report", "Report No.", "32", "Added to list"],
+        [
+            "Report",
+            "Report Name",
+            "CMCI Annex A-B Business Permit Registration Report",
+            "Analyzed / pending final data mapping",
+        ],
+        [
+            "Template",
+            "Workbook",
+            "BUSINESS_PERMIT_REPORT\\2025-2026_ANNEX-A-B_cmci_report.xlsx",
+            "Analyzed only",
+        ],
+        [
+            "Template",
+            "Sheets",
+            "Annex A (Jan. to Dec. 2025), Annex B (Jan. to Mar. 2026), PSIC",
+            "Observed",
+        ],
+        ["Template", "Period Requested", f"{date_from} to {date_to}", "Input parameter"],
+        ["Column A", "LGU", "Municipality of Zamboanguita", "Static / confirm exact CMCI spelling"],
+        ["Column B", "Province", "Negros Oriental", "Static"],
+        ["Column C", "Region", "REGION VII (CENTRAL VISAYAS)", "Static"],
+        ["Column D", "Classification", "Third Class Municipality", "Static"],
+        ["Column E", "LGU Type", "Municipality", "Manual/static value needed"],
+        ["Column F", "Business Name", "REGISTERED_BUSINESSES-BPLS / BUSINESS_ESTABLISHMENT-BPLS", "Source mapped"],
+        [
+            "Columns G-I",
+            "Business Address",
+            "Split address into house/building, street/barangay, subdivision/district where available",
+            "Needs parsing rule",
+        ],
+        ["Column J", "Owner's Name", "Owner/applicant name fields from BPLS", "Source mapped"],
+        [
+            "Column K",
+            "Industry / Nature of Business",
+            "Map BPLS line of business or business line code to PSIC major category",
+            "Needs PSIC mapping table",
+        ],
+        [
+            "Column L",
+            "Business Type",
+            "Normalize SOLE PROPRIETORSHIP, CORPORATION, PARTNERSHIP, COOPERATIVE, OPC",
+            "Needs value normalization",
+        ],
+        [
+            "Column M",
+            "Capitalization Size",
+            "Compute CMCI dropdown value with threshold text from capitalization or gross fallback",
+            "Source mapped",
+        ],
+        ["Column N", "New / Renewal", "Map registration status NEW or RENEWAL", "Source mapped"],
+        ["Column O", "Year of Registration", "Use registration/application year for Annex A/B period", "Source mapped"],
+        ["Column P", "Permit No.", "Permit number from BPLS establishment/registered data", "Source mapped"],
+        [
+            "Next Step",
+            "PSIC mapping",
+            "Create reviewed mapping from BPLS business lines to the 21 PSIC major categories",
+            "Required before real Excel generation",
+        ],
+    ]
+
+
+def find_business_permit_workbook(pattern):
+    matches = sorted(BUSINESS_PERMIT_DIR.glob(pattern), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not matches:
+        raise FileNotFoundError(f"Business permit source workbook not found: {BUSINESS_PERMIT_DIR / pattern}")
+    return matches[0]
+
+
+def parse_excel_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if hasattr(value, "year") and hasattr(value, "month") and hasattr(value, "day"):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%B %d, %Y"):
+            try:
+                return datetime.strptime(value[:10] if fmt == "%Y-%m-%d" else value, fmt).date()
+            except ValueError:
+                pass
+    return None
+
+
+def load_sheet_records(path):
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    sheet = workbook.active
+    headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+    records = []
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        records.append({headers[index]: value for index, value in enumerate(row) if index < len(headers)})
+    workbook.close()
+    return records
+
+
+def clean_text(value):
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\n", " ").split()).strip()
+
+
+def normalize_business_type(value):
+    text = clean_text(value).upper()
+    if "ONE" in text and "CORPORATION" in text:
+        return "One-Person Corporation"
+    if "CORPORATION" in text:
+        return "Corporation"
+    if "PARTNERSHIP" in text:
+        return "Partnership"
+    if "COOPERATIVE" in text:
+        return "Cooperative"
+    return "Single Proprietor"
+
+
+def capitalization_size(capital, gross):
+    basis = Decimal("0")
+    for value in (capital, gross):
+        if value in (None, ""):
+            continue
+        try:
+            basis = Decimal(str(value))
+        except Exception:
+            basis = Decimal("0")
+        if basis > 0:
+            break
+
+    if basis <= Decimal("3000000"):
+        return "Micro (less than P3000000)"
+    if basis <= Decimal("15000000"):
+        return "Small ( P3000001 - P15000000)"
+    if basis <= Decimal("100000000"):
+        return "Medium (P15000001 - P100000000)"
+    return "Large (more than P100000000)"
+
+
+def normalize_new_renewal(value):
+    text = clean_text(value).upper()
+    return "New" if text == "NEW" else "Renewal"
+
+
+def psic_category(line_of_business):
+    text = clean_text(line_of_business).lower()
+    rules = [
+        ("Financial and Insurance Activities", ("bank", "financial", "lending", "pawn", "money", "remittance", "insurance")),
+        ("Real Estate Activities", ("real estate", "lessor", "apartment", "rental", "space for rent", "property")),
+        (
+            "Wholesale and Retail Trade; Repair of Motor Vehicles and Motorcycles",
+            ("retail", "wholesale", "store", "sari-sari", "sale of", "pharmacy", "hardware", "lpg", "gasoline", "motorcycle parts"),
+        ),
+        (
+            "Accommodation and Food Service Activities",
+            ("restaurant", "eatery", "carinderia", "food", "cafe", "coffee", "hotel", "resort", "accommodation", "guesthouse", "lodging", "catering"),
+        ),
+        ("Transportation and Storage", ("transport", "tricycle", "pedicab", "vehicle", "passenger", "cargo", "trucking")),
+        ("Manufacturing", ("manufactur", "baking", "bakery", "milling", "printing", "processed")),
+        ("Agriculture, Forestry And Fishing", ("agri", "farm", "crop", "forestry", "coconut", "livestock", "poultry", "fishing")),
+        ("Mining and Quarrying", ("mining", "quarry", "sand", "gravel")),
+        (
+            "Water Supply; Sewerage, Waste Management And Remediation Activities",
+            ("water", "refilling", "purifying", "waste", "sewerage"),
+        ),
+        ("Construction", ("construction", "contractor", "building")),
+        ("Information and Communication", ("internet", "pisonet", "computer", "telecom", "communication")),
+        ("Professional, Scientific and Technical Activities", ("legal", "accounting", "engineering", "consult", "technical")),
+        ("Administrative and Support Service Activities", ("travel agency", "security", "manpower", "support service")),
+        ("Education", ("school", "tutorial", "education", "training")),
+        ("Human Health and Social Work Activities", ("clinic", "medical", "dental", "laboratory", "health")),
+        ("Arts, Entertainment and Recreation", ("gambling", "cockpit", "amusement", "recreation", "sports")),
+        ("Other Service Activities", ("barber", "beauty", "salon", "funeral", "wellness", "repair", "personal service")),
+    ]
+    for category, keywords in rules:
+        if any(keyword in text for keyword in keywords):
+            return category
+    return "Other Service Activities"
+
+
+def establishment_lookup(records, date_from, date_to):
+    start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+    end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+    by_business_id = {}
+
+    for record in records:
+        business_id = clean_text(record.get("Business Identification Number"))
+        if not business_id:
+            continue
+        application_date = parse_excel_date(record.get("Application Date"))
+        in_range = application_date is not None and start_date <= application_date <= end_date
+        score = (
+            1 if in_range else 0,
+            1 if clean_text(record.get("Permit No.")) else 0,
+            1 if (record.get("Total Amount Paid") or 0) else 0,
+        )
+        existing_score, _existing_record = by_business_id.get(business_id, ((-1, -1, -1), None))
+        if score > existing_score:
+            by_business_id[business_id] = (score, record)
+
+    return {business_id: record for business_id, (_score, record) in by_business_id.items()}
+
+
+def cmci_annex_row(registered_record, establishment_record):
+    capital = registered_record.get("Capital Investment")
+    gross = (registered_record.get("Gross Essential") or 0) + (registered_record.get("Gross Non-essential") or 0)
+    if establishment_record:
+        capital = capital or establishment_record.get("Capital Investment")
+        gross = gross or establishment_record.get("Gross Sales")
+
+    line_of_business = clean_text(
+        registered_record.get("Line of Business")
+        or (establishment_record or {}).get("Business Line")
+        or (establishment_record or {}).get("Business Nature")
+    )
+    address = clean_text(registered_record.get("Business Address") or (establishment_record or {}).get("Location of Business"))
+    barangay = clean_text(registered_record.get("Barangay Name") or (establishment_record or {}).get("Barangay (Business Address)"))
+    permit_no = clean_text(registered_record.get("Business Permit No.") or (establishment_record or {}).get("Permit No."))
+    date_applied = parse_excel_date(registered_record.get("Date Applied") or (establishment_record or {}).get("Application Date"))
+    year = registered_record.get("Year") or (date_applied.year if date_applied else "")
+
+    return [
+        "Zamboanguita",
+        "Negros Oriental",
+        "REGION VII (CENTRAL VISAYAS)",
+        "Third Class Municipality",
+        "Municipality",
+        clean_text(registered_record.get("Business Name") or (establishment_record or {}).get("Business Name")),
+        "",
+        address or barangay,
+        "",
+        clean_text(registered_record.get("Name of Owner/Applicant")),
+        psic_category(line_of_business),
+        normalize_business_type(registered_record.get("Type of Business") or (establishment_record or {}).get("Type of Business")),
+        capitalization_size(capital, gross),
+        normalize_new_renewal(registered_record.get("Status of Registration") or (establishment_record or {}).get("Type of Application")),
+        year,
+        permit_no,
+    ]
+
+
+def cmci_target_sheet_name(workbook, year):
+    if year == 2025:
+        return "Annex A (Jan. to Dec. 2025)"
+    for sheet_name in workbook.sheetnames:
+        if sheet_name.startswith("Annex B"):
+            return sheet_name
+    return workbook.sheetnames[1]
+
+
+def build_cmci_annex_rows(date_from, date_to):
+    registered_path = find_business_permit_workbook("REGISTERED_BUSINESSES-BPLS*.xlsx")
+    establishment_path = find_business_permit_workbook("BUSINESS_ESTABLISHMENT-BPLS*.xlsx")
+    registered_records = load_sheet_records(registered_path)
+    establishment_records = load_sheet_records(establishment_path)
+    establishments = establishment_lookup(establishment_records, date_from, date_to)
+    start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+    end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+    rows_by_year = {}
+
+    for record in registered_records:
+        date_applied = parse_excel_date(record.get("Date Applied"))
+        if date_applied is None or not (start_date <= date_applied <= end_date):
+            continue
+        permit_no = clean_text(record.get("Business Permit No."))
+        if not permit_no:
+            continue
+        address = clean_text(record.get("Business Address"))
+        if address and "ZAMBOANGUITA" not in address.upper():
+            continue
+        business_id = clean_text(record.get("Business Identification Number"))
+        row = cmci_annex_row(record, establishments.get(business_id))
+        rows_by_year.setdefault(date_applied.year, []).append((date_applied, permit_no, row))
+
+    for year in rows_by_year:
+        rows_by_year[year].sort(key=lambda item: (item[0], item[1], item[2][5]))
+    return rows_by_year
+
+
+def write_cmci_annex_workbook(rows_by_year, output_path, date_from, date_to):
+    template_path = BUSINESS_PERMIT_DIR / "2025-2026_ANNEX-A-B_cmci_report.xlsx"
+    workbook = load_workbook(template_path)
+    start_row = 7
+    end_clear_row = 1301
+
+    for year, rows in rows_by_year.items():
+        sheet = workbook[cmci_target_sheet_name(workbook, year)]
+        for row_index in range(start_row, min(sheet.max_row, end_clear_row) + 1):
+            for col_index in range(1, 17):
+                sheet.cell(row_index, col_index).value = None
+        if len(rows) > sheet.max_row - start_row + 1:
+            sheet.insert_rows(sheet.max_row + 1, len(rows) - (sheet.max_row - start_row + 1))
+        for index, (_date_applied, _permit_no, row_values) in enumerate(rows, start=start_row):
+            for col_index, value in enumerate(row_values, start=1):
+                sheet.cell(index, col_index).value = excel_value(value)
+
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return sum(len(rows) for rows in rows_by_year.values()), output_path
+
+
+def load_sheet_records_with_header(path, header_row):
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    sheet = workbook.active
+    headers = [cell.value for cell in next(sheet.iter_rows(min_row=header_row, max_row=header_row))]
+    records = []
+    for row in sheet.iter_rows(min_row=header_row + 1, values_only=True):
+        record = {headers[index]: value for index, value in enumerate(row) if index < len(headers)}
+        records.append(record)
+    workbook.close()
+    return records
+
+
+def decimal_value(value):
+    if value in (None, ""):
+        return Decimal("0")
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
+def tax_on_business_category(business_nature, business_line):
+    nature_text = clean_text(business_nature).lower()
+    line_text = clean_text(business_line).lower()
+    text = f"{nature_text} {line_text}"
+    if any(keyword in text for keyword in ("bank", "financial", "lending", "pawn", "money", "remittance", "insurance")):
+        return "Banks & Other Financial Int."
+    if any(keyword in text for keyword in ("manufactur", "baking", "bakery", "milling", "printing", "processed")):
+        return "Manufacturing"
+    if any(keyword in line_text for keyword in ("wholesale", "distributor", "distribution")):
+        return "Distributor"
+    if any(keyword in line_text for keyword in ("retail", "store", "sari-sari", "pharmacy", "hardware", "convenience")):
+        return "Retailing"
+    if "wholesale and retail trade" in nature_text:
+        return "Retailing"
+    return "Other Business Tax"
+
+
+def business_establishment_match_lookup(records):
+    by_or = {}
+    by_business_id = {}
+
+    for record in records:
+        or_number = clean_text(record.get("OR Number"))
+        business_id = clean_text(record.get("Business Identification Number"))
+        has_paid = decimal_value(record.get("Total Amount Paid")) > 0
+        has_permit = bool(clean_text(record.get("Permit No.")))
+        score = (1 if has_paid else 0, 1 if has_permit else 0)
+
+        if or_number:
+            existing_score, _existing_record = by_or.get(or_number, ((-1, -1), None))
+            if score > existing_score:
+                by_or[or_number] = (score, record)
+
+        if business_id:
+            existing_score, _existing_record = by_business_id.get(business_id, ((-1, -1), None))
+            if score > existing_score:
+                by_business_id[business_id] = (score, record)
+
+    return (
+        {or_number: record for or_number, (_score, record) in by_or.items()},
+        {business_id: record for business_id, (_score, record) in by_business_id.items()},
+    )
+
+
+def build_tax_on_business_report(date_from, date_to):
+    abstract_path = find_business_permit_workbook("ABSTRACT_OF_GENERAL_COLLECTION-BPLS*.xlsx")
+    establishment_path = find_business_permit_workbook("BUSINESS_ESTABLISHMENT-BPLS*.xlsx")
+    abstract_records = load_sheet_records_with_header(abstract_path, 7)
+    establishment_records = load_sheet_records(establishment_path)
+    by_or, by_business_id = business_establishment_match_lookup(establishment_records)
+    start_date = datetime.strptime(date_from, "%Y-%m-%d").date()
+    end_date = datetime.strptime(date_to, "%Y-%m-%d").date()
+
+    category_order = [
+        "Manufacturing",
+        "Distributor",
+        "Retailing",
+        "Banks & Other Financial Int.",
+        "Other Business Tax",
+        "Fines & Penalties",
+    ]
+    summary = {
+        category: {
+            "business_tax": Decimal("0"),
+            "surcharge": Decimal("0"),
+            "receipt_numbers": set(),
+            "business_ids": set(),
+        }
+        for category in category_order
+    }
+    details = []
+
+    for record in abstract_records:
+        or_date = parse_excel_date(record.get("O.R. Date"))
+        if or_date is None or not (start_date <= or_date <= end_date):
+            continue
+
+        business_tax = decimal_value(record.get("Business Tax"))
+        surcharge = decimal_value(record.get("Surcharge"))
+        if business_tax == 0 and surcharge == 0:
+            continue
+
+        or_number = clean_text(record.get("O.R. Number"))
+        business_id = clean_text(record.get("Business Identification Number"))
+        establishment = by_or.get(or_number) or by_business_id.get(business_id) or {}
+        business_nature = clean_text(establishment.get("Business Nature"))
+        business_line = clean_text(establishment.get("Business Line"))
+        category = tax_on_business_category(business_nature, business_line)
+        match_basis = "OR Number" if or_number in by_or else ("Business ID" if business_id in by_business_id else "Unmatched")
+
+        if business_tax:
+            summary[category]["business_tax"] += business_tax
+            summary[category]["receipt_numbers"].add(or_number)
+            summary[category]["business_ids"].add(business_id)
+
+        if surcharge:
+            summary["Fines & Penalties"]["surcharge"] += surcharge
+            summary["Fines & Penalties"]["receipt_numbers"].add(or_number)
+            summary["Fines & Penalties"]["business_ids"].add(business_id)
+
+        details.append([
+            or_date,
+            clean_text(record.get("Date Paid")),
+            or_number,
+            clean_text(record.get("Transaction Type")),
+            business_id,
+            clean_text(record.get("Business Name")),
+            clean_text(record.get("Barangay Name")),
+            business_nature,
+            business_line,
+            category,
+            business_tax,
+            surcharge,
+            decimal_value(record.get("Amount Paid")),
+            match_basis,
+        ])
+
+    summary_rows = []
+    for category in category_order:
+        business_tax = summary[category]["business_tax"]
+        surcharge = summary[category]["surcharge"]
+        summary_rows.append([
+            category,
+            business_tax,
+            surcharge,
+            business_tax + surcharge,
+        ])
+
+    return {
+        "summary": summary_rows,
+        "details": details,
+        "abstract_path": str(abstract_path),
+        "establishment_path": str(establishment_path),
+    }
+
+
+def tax_on_business_summary_amounts(date_from, date_to):
+    report_data = build_tax_on_business_report(date_from, date_to)
+    return {
+        row[0]: row[3]
+        for row in report_data["summary"]
+    }
+
+
+def style_tax_on_business_sheet(sheet):
+    header_fill = PatternFill("solid", fgColor="1F4E78")
+    header_font = Font(color="FFFFFF", bold=True)
+    total_fill = PatternFill("solid", fgColor="D9EAF7")
+    thin = Side(style="thin", color="B7C9D6")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    for row in sheet.iter_rows():
+        for cell in row:
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    for cell in sheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    for row in sheet.iter_rows(min_row=2):
+        if row[0].value == "TOTAL":
+            for cell in row:
+                cell.fill = total_fill
+                cell.font = Font(bold=True)
+
+
+def write_tax_on_business_workbook(report_data, output_path, date_from, date_to):
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Summary"
+    detail_sheet = workbook.create_sheet("Detail")
+    notes_sheet = workbook.create_sheet("Notes")
+
+    summary_headers = ["Category", "Business Tax", "Fines & Penalties / Surcharge", "Total"]
+    summary_sheet.append(summary_headers)
+    for row in report_data["summary"]:
+        summary_sheet.append([excel_value(value) for value in row])
+    total_row = summary_sheet.max_row + 1
+    summary_sheet.append([
+        "TOTAL",
+        f"=SUM(B2:B{total_row - 1})",
+        f"=SUM(C2:C{total_row - 1})",
+        f"=SUM(D2:D{total_row - 1})",
+    ])
+
+    detail_headers = [
+        "O.R. Date",
+        "Date Paid",
+        "O.R. Number",
+        "Transaction Type",
+        "Business ID",
+        "Business Name",
+        "Barangay",
+        "Business Nature",
+        "Business Line",
+        "Tax Category",
+        "Business Tax",
+        "Surcharge",
+        "Amount Paid",
+        "Match Basis",
+    ]
+    detail_sheet.append(detail_headers)
+    for row in report_data["details"]:
+        detail_sheet.append([excel_value(value) for value in row])
+
+    notes = [
+        ["Report", "33. Tax on Business Summary from BPLS Business Tax"],
+        ["Period", f"{date_from} to {date_to}"],
+        ["General Collection Source", report_data["abstract_path"]],
+        ["Business Establishment Source", report_data["establishment_path"]],
+        ["Business Tax", "Uses Abstract of General Collection column: Business Tax"],
+        ["Fines & Penalties", "Uses Abstract of General Collection column: Surcharge"],
+        ["Classification Source", "Business Establishment columns: Business Nature and Business Line"],
+        ["Manual Review", "Manufacturing, Distributor, Retailing, Banks/Financial, and Other Business Tax can still be manually reviewed against the other app/database."],
+    ]
+    for row in notes:
+        notes_sheet.append(row)
+
+    detail_sheet.sheet_state = "hidden"
+    notes_sheet.sheet_state = "hidden"
+
+    for sheet in (summary_sheet, detail_sheet, notes_sheet):
+        style_tax_on_business_sheet(sheet)
+        sheet.freeze_panes = "A2"
+
+    for column, width in {
+        "A": 28, "B": 18, "C": 30, "D": 18,
+    }.items():
+        summary_sheet.column_dimensions[column].width = width
+
+    detail_widths = {
+        "A": 13, "B": 20, "C": 20, "D": 14, "E": 24, "F": 38, "G": 18,
+        "H": 44, "I": 44, "J": 28, "K": 14, "L": 14, "M": 14, "N": 14,
+    }
+    for column, width in detail_widths.items():
+        detail_sheet.column_dimensions[column].width = width
+    notes_sheet.column_dimensions["A"].width = 26
+    notes_sheet.column_dimensions["B"].width = 120
+
+    for sheet in (summary_sheet, detail_sheet):
+        for row in sheet.iter_rows(min_row=2):
+            for cell in row:
+                if cell.column in (2, 3, 4, 11, 12, 13):
+                    cell.number_format = '#,##0.00'
+        sheet.auto_filter.ref = sheet.dimensions
+
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(report_data["summary"]), output_path
+
+
 def summary_headers():
     return [
         "SOURCES_OF_COLLECTIONS",
@@ -627,6 +1210,7 @@ def build_no_rpt_rows_from_fdb(date_from, date_to, user, password):
         WHERE p.PAYMENTDATE >= CAST(? AS DATE)
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(p.PAYGROUP_CT, '') <> 'RPT'
         GROUP BY pd.ITAXTYPE_CT, pd.SOURCEID, pd.SOURCE_CT
     """
@@ -645,6 +1229,13 @@ def build_no_rpt_rows_from_fdb(date_from, date_to, user, password):
         con.rollback()
     finally:
         con.close()
+
+    tax_business_amounts = tax_on_business_summary_amounts(date_from, date_to)
+    if any(tax_business_amounts.values()):
+        for name, amount in tax_business_amounts.items():
+            if name in amounts:
+                amounts[name] = amount
+
     rows = [summary_headers()]
     rows.extend(split_summary_amount(name, amounts.get(name, 0)) for name in order)
     totals = ["TOTAL"]
@@ -668,6 +1259,7 @@ def rpt_summary_rows_from_fdb(date_from, date_to, user, password):
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
         GROUP BY pcd.PROPERTYKIND_CT, pcd.ITAXTYPE_CT, pcd.CASETYPE_CT, pcd.TAXYEAR
     """
@@ -933,6 +1525,7 @@ def build_rpt_record_rows_from_fdb(date_from, date_to, user, password):
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
         ORDER BY p.PAYMENTDATE, p.RECEIPTNO, p.PAYMENT_ID, pcd.TAXTRANS_ID, pcd.TAXYEAR
     """
@@ -1108,6 +1701,7 @@ def build_advance_rpt_record_rows_from_fdb(date_from, date_to, user, password):
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
           AND pcd.TAXYEAR > ?
         ORDER BY p.PAYMENTDATE, p.RECEIPTNO, p.PAYMENT_ID, pcd.TAXTRANS_ID, pcd.TAXYEAR
@@ -1272,6 +1866,7 @@ def build_provincial_rpt_coding_rows_from_fdb(date_from, date_to, user, password
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
           AND pcd.ITAXTYPE_CT IN ('BSC', 'SEF')
         GROUP BY COALESCE(pcd.PROPERTYKIND_CT, prop.PROPERTYKIND_CT),
@@ -1337,6 +1932,7 @@ def payment_detail_rows_for_abstract(date_from, date_to, user, password):
         WHERE p.PAYMENTDATE >= CAST(? AS DATE)
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(p.PAYGROUP_CT, '') <> 'RPT'
         ORDER BY p.PAYMENTDATE, p.RECEIPTNO, p.PAYMENT_ID, pd.RECEIPTITEMORDER
     """
@@ -1545,6 +2141,7 @@ def build_full_report_collections_rows_from_fdb(date_from, date_to, user, passwo
         WHERE p.PAYMENTDATE >= CAST(? AS DATE)
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND (pd.SOURCE_CT IN ('CTCI', 'CTCC') OR pd.ITAXTYPE_CT = 'CTC')
         GROUP BY CAST(p.PAYMENTDATE AS DATE)
     """
@@ -1558,6 +2155,7 @@ def build_full_report_collections_rows_from_fdb(date_from, date_to, user, passwo
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
         GROUP BY CAST(p.PAYMENTDATE AS DATE)
     """
@@ -1570,6 +2168,7 @@ def build_full_report_collections_rows_from_fdb(date_from, date_to, user, passwo
         WHERE p.PAYMENTDATE >= CAST(? AS DATE)
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(p.PAYGROUP_CT, '') <> 'RPT'
           AND NOT (pd.SOURCE_CT IN ('CTCI', 'CTCC') OR pd.ITAXTYPE_CT = 'CTC')
         GROUP BY CAST(p.PAYMENTDATE AS DATE)
@@ -1621,6 +2220,7 @@ def build_summary_sharing_rows_from_fdb(date_from, date_to, user, password):
           AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
           AND p.PAYGROUP_CT = 'RPT'
           AND COALESCE(p.VOID_BV, 0) = 0
+          AND COALESCE(TRIM(p.STATUS_CT), '') NOT IN ('CNL', 'CAN', 'CNC', 'CANCEL', 'CANCELLED', 'VOID', 'VOI')
           AND COALESCE(pcd.CANCELLED_BV, 0) = 0
         GROUP BY pcd.PROPERTYKIND_CT, COALESCE(pcd.CLASSCODE_CT, ra.PREDOMCLASSCODE_CT),
                  pcd.ITAXTYPE_CT, pcd.CASETYPE_CT, pcd.TAXYEAR
@@ -1690,6 +2290,10 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         )
     elif number == 31:
         rows = build_full_report_collections_rows_from_fdb(date_from, date_to, user, password)
+    elif number == 32:
+        rows = build_cmci_annex_rows(date_from, date_to)
+    elif number == 33:
+        rows = build_tax_on_business_report(date_from, date_to)
     else:
         raise RuntimeError(f"Unsupported FDB template report {number}.")
     if number in (21, 22, 23):
@@ -1712,6 +2316,10 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         )
     if number == 31:
         return write_full_report_collections_workbook(rows, output_path, date_from, date_to)
+    if number == 32:
+        return write_cmci_annex_workbook(rows, output_path, date_from, date_to)
+    if number == 33:
+        return write_tax_on_business_workbook(rows, output_path, date_from, date_to)
     return write_csv_rows(output_path, rows)
 
 
