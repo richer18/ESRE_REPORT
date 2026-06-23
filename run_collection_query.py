@@ -46,6 +46,14 @@ FDB_TEMPLATE_REPORTS = {
     31: "Full Report Collections",
     32: "CMCI Annex A-B Business Permit Registration Report",
     33: "Tax on Business Summary from BPLS Business Tax",
+    34: "Generate Receipt Collector",
+}
+
+COLLECTOR_ALIASES = {
+    "iris": "angelique",
+    "iris arbolado": "angelique",
+    "angelique iris": "angelique",
+    "flora my": "flora",
 }
 
 
@@ -1171,17 +1179,109 @@ def split_summary_amount(name, amount):
     return row
 
 
-def connect_report_db(user="SYSDBA", password="masterkey"):
+def connect_report_db(user="SYSDBA", password="masterkey", charset="UTF8"):
     return fdb.connect(
         dsn=resolve_db_path(),
         user=user,
         password=password,
-        charset="UTF8",
+        charset=charset,
         fb_library_name=FB_CLIENT,
         isolation_level=fdb.ISOLATION_LEVEL_READ_COMMITED_RO,
         no_db_triggers=True,
         no_gc=True,
     )
+
+
+def normalize_collector_name(collector):
+    value = (collector or "").strip()
+    if not value:
+        return ""
+    return COLLECTOR_ALIASES.get(value.lower(), value)
+
+
+def payment_status_label(status_ct, void_bv):
+    status = (status_ct or "").strip().upper()
+    if void_bv:
+        return "Void"
+    if status in ("VOID", "VOI"):
+        return "Void"
+    if status in ("CNL", "CAN", "CNC", "CANCEL", "CANCELLED"):
+        return "Cancelled"
+    return "Paid"
+
+
+def collector_choices_for_period(date_from, date_to, user, password):
+    sql = """
+        SELECT
+            COALESCE(NULLIF(TRIM(p.COLLECTOR), ''), NULLIF(TRIM(p.USERID), ''), 'UNSPECIFIED') AS COLLECTOR_NAME,
+            COUNT(*) AS RECEIPTS,
+            SUM(
+                CASE
+                    WHEN COALESCE(p.PAYGROUP_CT, '') = 'RPT'
+                        THEN COALESCE(rpt_totals.RPT_TOTAL, detail_totals.DETAIL_TOTAL, p.AMOUNT, 0)
+                    ELSE COALESCE(detail_totals.DETAIL_TOTAL, rpt_totals.RPT_TOTAL, p.AMOUNT, 0)
+                END
+            ) AS TOTAL_AMOUNT
+        FROM PAYMENT p
+        LEFT JOIN (
+            SELECT PAYMENT_ID, SUM(AMOUNTPAID) AS DETAIL_TOTAL
+            FROM PAYMENTDETAIL
+            GROUP BY PAYMENT_ID
+        ) detail_totals ON detail_totals.PAYMENT_ID = p.PAYMENT_ID
+        LEFT JOIN (
+            SELECT PAYMENT_ID, SUM(AMOUNT) AS RPT_TOTAL
+            FROM PAYMENTCLASSDETAIL
+            GROUP BY PAYMENT_ID
+        ) rpt_totals ON rpt_totals.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+        GROUP BY 1
+        ORDER BY 1
+    """
+    con = connect_report_db(user, password, charset="WIN1252")
+    try:
+        cur = con.cursor()
+        cur.execute(sql, (date_from, date_to))
+        choices = [
+            {"collector": collector_name, "receipts": receipts or 0, "total": total_amount or Decimal("0")}
+            for collector_name, receipts, total_amount in cur.fetchall()
+        ]
+        con.rollback()
+    finally:
+        con.close()
+    return choices
+
+
+def resolve_collector_selection(collector_arg, date_from, date_to, user, password):
+    value = (collector_arg or "").strip()
+    if value and not value.isdigit():
+        return normalize_collector_name(value)
+
+    choices = collector_choices_for_period(date_from, date_to, user, password)
+    if not choices:
+        raise RuntimeError(f"No collectors found from {date_from} to {date_to}.")
+
+    print(f"\nCollectors from {date_from} to {date_to}:")
+    for index, choice in enumerate(choices, start=1):
+        total = excel_value(choice["total"])
+        print(f"{index:>2}. {choice['collector']:<24} {choice['receipts']:>6} receipts   {total:,.2f}")
+
+    if value:
+        selected_index = int(value)
+    else:
+        selected_value = input("Choose collector number: ").strip()
+        if not selected_value:
+            raise RuntimeError("Collector selection is required for report 34.")
+        if not selected_value.isdigit():
+            return normalize_collector_name(selected_value)
+        selected_index = int(selected_value)
+
+    if selected_index < 1 or selected_index > len(choices):
+        raise RuntimeError(f"Collector number {selected_index} is outside the available range 1-{len(choices)}.")
+
+    selected_collector = choices[selected_index - 1]["collector"]
+    print(f"Selected collector: {selected_collector}")
+    return selected_collector
 
 
 def build_no_rpt_rows_from_fdb(date_from, date_to, user, password):
@@ -2263,7 +2363,154 @@ def build_summary_sharing_rows_from_fdb(date_from, date_to, user, password):
     return rows
 
 
-def run_fdb_template_report(number, output_path, date_from, date_to, user, password):
+def build_generate_receipt_collector_rows_from_fdb(date_from, date_to, user, password, collector):
+    collector = normalize_collector_name(collector)
+    if not collector:
+        raise RuntimeError("Report 34 requires a collector. Example: python run_collection_query.py 34 2026-01-01 2026-01-31 angelique")
+
+    sql = """
+        SELECT
+            p.PAYMENTDATE,
+            COALESCE(NULLIF(TRIM(p.COLLECTOR), ''), NULLIF(TRIM(p.USERID), ''), 'UNSPECIFIED') AS COLLECTOR_NAME,
+            COALESCE(NULLIF(TRIM(p.AFTYPE), ''), NULLIF(TRIM(p.PAYGROUP_CT), ''), 'UNSPECIFIED') AS RECEIPT_TYPE,
+            p.RECEIPTNO,
+            COALESCE(NULLIF(TRIM(p.PAIDBY), ''), '-') AS TAXPAYER_NAME,
+            p.STATUS_CT,
+            p.VOID_BV,
+            CASE
+                WHEN COALESCE(p.PAYGROUP_CT, '') = 'RPT'
+                    THEN COALESCE(rpt_totals.RPT_TOTAL, detail_totals.DETAIL_TOTAL, p.AMOUNT, 0)
+                ELSE COALESCE(detail_totals.DETAIL_TOTAL, rpt_totals.RPT_TOTAL, p.AMOUNT, 0)
+            END AS TOTAL_AMOUNT
+        FROM PAYMENT p
+        LEFT JOIN (
+            SELECT PAYMENT_ID, SUM(AMOUNTPAID) AS DETAIL_TOTAL
+            FROM PAYMENTDETAIL
+            GROUP BY PAYMENT_ID
+        ) detail_totals ON detail_totals.PAYMENT_ID = p.PAYMENT_ID
+        LEFT JOIN (
+            SELECT PAYMENT_ID, SUM(AMOUNT) AS RPT_TOTAL
+            FROM PAYMENTCLASSDETAIL
+            GROUP BY PAYMENT_ID
+        ) rpt_totals ON rpt_totals.PAYMENT_ID = p.PAYMENT_ID
+        WHERE p.PAYMENTDATE >= CAST(? AS DATE)
+          AND p.PAYMENTDATE < DATEADD(1 DAY TO CAST(? AS DATE))
+          AND UPPER(COALESCE(NULLIF(TRIM(p.COLLECTOR), ''), NULLIF(TRIM(p.USERID), ''), 'UNSPECIFIED')) = ?
+        ORDER BY p.PAYMENTDATE, p.RECEIPTNO, p.PAYMENT_ID
+    """
+    rows = [["DATE", "Collector", "Receipt Type", "Receipt No", "Taxpayer name", "Status", "Total"]]
+    con = connect_report_db(user, password, charset="WIN1252")
+    try:
+        cur = con.cursor()
+        cur.execute(sql, (date_from, date_to, collector.upper()))
+        for payment_date, collector_name, receipt_type, receipt_no, taxpayer_name, status_ct, void_bv, total_amount in cur.fetchall():
+            rows.append([
+                payment_date,
+                collector_name,
+                receipt_type,
+                receipt_no,
+                taxpayer_name,
+                payment_status_label(status_ct, void_bv),
+                total_amount or Decimal("0"),
+            ])
+        con.rollback()
+    finally:
+        con.close()
+    return rows
+
+
+def write_generate_receipt_collector_workbook(rows, output_path, date_from, date_to, collector):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Generate Receipt Collector"
+
+    collector_label = normalize_collector_name(collector)
+    body_rows = rows[1:]
+    total_amount = Decimal("0")
+    for row in body_rows:
+        amount = row[6] or Decimal("0")
+        if isinstance(amount, Decimal):
+            total_amount += amount
+        else:
+            total_amount += Decimal(str(amount))
+
+    thin = Side(style="thin", color="C9D5E3")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_fill = PatternFill("solid", fgColor="EAF0F7")
+    title_fill = PatternFill("solid", fgColor="123A5C")
+    total_fill = PatternFill("solid", fgColor="EEF6F4")
+
+    sheet.merge_cells("A1:G1")
+    sheet["A1"] = "GENERATE RECEIPT COLLECTOR"
+    sheet["A1"].font = Font(bold=True, color="FFFFFF", size=14)
+    sheet["A1"].fill = title_fill
+    sheet["A1"].alignment = Alignment(horizontal="center")
+
+    sheet.merge_cells("A2:G2")
+    sheet["A2"] = f"Collector: {collector_label}    Period: {date_from} to {date_to}    Includes paid, cancelled, and void payments"
+    sheet["A2"].font = Font(italic=True, color="44546A")
+    sheet["A2"].alignment = Alignment(horizontal="center")
+
+    header_row = 4
+    for col_index, value in enumerate(rows[0], start=1):
+        cell = sheet.cell(header_row, col_index)
+        cell.value = value
+        cell.font = Font(bold=True, color="1F2D3D")
+        cell.fill = header_fill
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center")
+
+    for row_index, row_values in enumerate(body_rows, start=header_row + 1):
+        for col_index, value in enumerate(row_values, start=1):
+            cell = sheet.cell(row_index, col_index)
+            cell.value = excel_value(value)
+            cell.border = border
+            cell.alignment = Alignment(vertical="top")
+            if col_index == 1 and hasattr(value, "strftime"):
+                cell.number_format = "yyyy-mm-dd"
+            if col_index == 7:
+                cell.number_format = "#,##0.00"
+                cell.alignment = Alignment(horizontal="right")
+
+    total_row = header_row + len(body_rows) + 1
+    sheet.merge_cells(start_row=total_row, start_column=1, end_row=total_row, end_column=6)
+    sheet.cell(total_row, 1).value = "TOTAL"
+    sheet.cell(total_row, 1).font = Font(bold=True)
+    sheet.cell(total_row, 1).fill = total_fill
+    sheet.cell(total_row, 1).border = border
+    sheet.cell(total_row, 1).alignment = Alignment(horizontal="right")
+    total_cell = sheet.cell(total_row, 7)
+    total_cell.value = excel_value(total_amount)
+    total_cell.font = Font(bold=True)
+    total_cell.fill = total_fill
+    total_cell.border = border
+    total_cell.number_format = "#,##0.00"
+    total_cell.alignment = Alignment(horizontal="right")
+
+    for row in sheet.iter_rows(min_row=5, max_row=total_row, min_col=1, max_col=7):
+        for cell in row:
+            cell.border = border
+
+    widths = {
+        "A": 14,
+        "B": 18,
+        "C": 16,
+        "D": 18,
+        "E": 42,
+        "F": 14,
+        "G": 16,
+    }
+    for column, width in widths.items():
+        sheet.column_dimensions[column].width = width
+    sheet.freeze_panes = "A5"
+    sheet.auto_filter.ref = f"A4:G{max(total_row - 1, header_row)}"
+
+    output_path = output_path.with_suffix(".xlsx")
+    output_path = save_workbook_with_fallback(workbook, output_path)
+    return len(body_rows), output_path
+
+
+def run_fdb_template_report(number, output_path, date_from, date_to, user, password, collector=None):
     if number == 21:
         rows = build_full_summary_rows_from_fdb(date_from, date_to, user, password)
     elif number == 22:
@@ -2294,6 +2541,8 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         rows = build_cmci_annex_rows(date_from, date_to)
     elif number == 33:
         rows = build_tax_on_business_report(date_from, date_to)
+    elif number == 34:
+        rows = build_generate_receipt_collector_rows_from_fdb(date_from, date_to, user, password, collector)
     else:
         raise RuntimeError(f"Unsupported FDB template report {number}.")
     if number in (21, 22, 23):
@@ -2320,6 +2569,8 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
         return write_cmci_annex_workbook(rows, output_path, date_from, date_to)
     if number == 33:
         return write_tax_on_business_workbook(rows, output_path, date_from, date_to)
+    if number == 34:
+        return write_generate_receipt_collector_workbook(rows, output_path, date_from, date_to, collector)
     return write_csv_rows(output_path, rows)
 
 
@@ -2335,11 +2586,14 @@ def main():
     )
     parser.add_argument("date_from", nargs="?", type=parse_date, help="Start date, YYYY-MM-DD.")
     parser.add_argument("date_to", nargs="?", type=parse_date, help="End date, YYYY-MM-DD.")
+    parser.add_argument("collector_name", nargs="?", help="Optional collector name for collector reports.")
     parser.add_argument("--list", action="store_true", help="List available queries and exit.")
     parser.add_argument("--collector", help="Optional collector/user id filter for collector reports.")
     parser.add_argument("--user", default="SYSDBA", help="Firebird username. Default: SYSDBA.")
     parser.add_argument("--password", default="masterkey", help="Firebird password. Default: masterkey.")
     args = parser.parse_args()
+    if args.collector is None and args.collector_name:
+        args.collector = args.collector_name
 
     queries = load_queries()
 
@@ -2354,6 +2608,15 @@ def main():
     selected_fdb_template_title = FDB_TEMPLATE_REPORTS.get(args.query_number)
     if selected is None and selected_fdb_template_title is None:
         parser.error(f"Query {args.query_number} was not found. Use --list to see choices.")
+
+    if args.query_number == 34:
+        args.collector = resolve_collector_selection(
+            args.collector,
+            args.date_from,
+            args.date_to,
+            args.user,
+            args.password,
+        )
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     collector_suffix = ""
@@ -2371,6 +2634,7 @@ def main():
             args.date_to,
             args.user,
             args.password,
+            args.collector,
         )
         print(f"Query {args.query_number}: {selected_fdb_template_title}")
         print(f"Rows exported: {row_count}")

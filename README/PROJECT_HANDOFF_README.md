@@ -157,6 +157,7 @@ Current report list:
 31. Full Report Collections
 32. CMCI Annex A-B Business Permit Registration Report
 33. Tax on Business Summary from BPLS Business Tax
+34. Generate Receipt Collector
 ```
 
 Reports 1 to 20 mostly export CSV from SELECT-only SQL.
@@ -175,7 +176,33 @@ Report 32 generates an Excel file using the uploaded CMCI Annex A-B template.
 
 Report 33 generates a Tax on Business Excel summary from BPLS Business Tax and Surcharge.
 
-`python .\run_collection_query.py --list` includes reports 1 to 33.
+Report 34 generates an Excel collector receipt audit list from Firebird `PAYMENT`, including RPT, Community Tax Certificate, and Other Fees/Charges receipt headers. It intentionally includes paid, cancelled, and void payments for collector review.
+
+Example:
+
+```powershell
+python .\run_collection_query.py 34 2026-01-01 2026-01-31 angelique
+```
+
+Collector selection can also be number-based. Run report 34 without a collector and the script will print collectors for the selected period, then ask for a number:
+
+```powershell
+python .\run_collection_query.py 34 2026-01-01 2026-01-31
+```
+
+You can also pass the collector number directly:
+
+```powershell
+python .\run_collection_query.py 34 2026-01-01 2026-01-31 1
+```
+
+Report 34 output columns:
+
+```text
+DATE | Collector | Receipt Type | Receipt No | Taxpayer name | Status | Total
+```
+
+`python .\run_collection_query.py --list` includes reports 1 to 34.
 
 ## Firebird Tables Learned
 
@@ -192,6 +219,30 @@ T_FUNDTYPE
 T_PAYMODE
 T_STATUS
 ```
+
+RCD / Report of Collections and Deposits finding:
+
+- The database has RCD-related structures:
+  - `RCDCTRLNUMBER`
+  - `RCDACCOUNTABLEFORM`
+  - `RCDCASHBREAKDOWN`
+  - `RCDFUNDTYPEBREAKDOWN`
+  - `RCDDEPOSIT`
+  - `RCDORBOOKLET`
+  - `RCDORBOOKLETDEFECTIVE`
+  - `RCDORBOOKLETINVENTORY`
+  - `REMITTANCE`
+  - `SECURITY_USERS_RCD`
+- Live read-only check found `0` rows in the main RCD transaction/control tables listed above, except `SECURITY_USERS_RCD` which has 3 users: `rowena`, `ricardo`, and `joy`.
+- `PAYMENT` has an `RCDNUMBER` column, but direct read-only scan found `0` nonblank `PAYMENT.RCDNUMBER` values in the current database.
+- Meaning: the schema supports RCD / accountable form / cash breakdown / deposit workflows, but current collection records are not linked to generated RCD numbers in the `.FDB`.
+- Remittance/deposit date fields exist in schema, but live read-only check found no usable remittance rows:
+  - `REMITTANCE.TRANSDATE`, `AMOUNTREMITTED`, `CASHREMITTED`, `CHEQUEREMITTED`, `COLLECTOR`, `REMITTE`, `REFRCDNUM`
+  - `RCDDEPOSIT.DEPOSITDATE`, `AMOUNT`, `DEPOSIT_SLIP`, `BANKCODE_CT`, `RCDCTRL_ID`
+  - `RCDCTRLNUMBER.AOAPPROVEDDATE`, `LOAPPROVEDDATE`, `COAPPROVEDDATE`, `REMITEDAMOUNT`
+  - `BANKSTATEMENT` and `BANKSTATEMENTLINE` tables exist but are empty in the current database
+- Live row counts: `REMITTANCE = 0`, `RCDDEPOSIT = 0`, `RCDCTRLNUMBER = 0`, `BANKSTATEMENT = 0`, `BANKSTATEMENTLINE = 0`.
+- Meaning: current `.FDB` cannot tell when a specific receipt was remitted/deposited from actual remittance tables. It can only show payment date/transaction date from `PAYMENT` unless another external system/file records remittance.
 
 Important RPT tables:
 
@@ -2632,3 +2683,68 @@ npm run build
 ```
 
 Result: lint passed and build passed. Existing Vite chunk-size warning may still appear, but it is not a compile error.
+
+## Portable Login Database For Cloned PCs
+
+Problem found:
+
+- Login failed after cloning the app to another PC because the backend auth SQLite database path was tied to one laptop:
+
+```text
+C:\Users\LIFT-LAPTOP\AppData\Local\Temp\lgu_treasury_auth.sqlite
+```
+
+Fix implemented:
+
+- `backend\.env.example` now uses a portable SQLite setting:
+
+```text
+DB_CONNECTION=sqlite
+DB_DATABASE=database.sqlite
+SESSION_DRIVER=file
+QUEUE_CONNECTION=sync
+CACHE_STORE=file
+```
+
+- `backend\config\database.php` now resolves relative SQLite database names into:
+
+```text
+backend\database\database.sqlite
+```
+
+- New setup runner added:
+
+```text
+LGU_TreasuryReportingSystem\server_runner\setup_backend_auth_db.bat
+```
+
+Use on a newly cloned PC:
+
+```text
+server_runner\server_menu.bat
+Option 1. Setup backend auth database
+```
+
+The setup creates/copies:
+
+```text
+backend\.env
+backend\database\database.sqlite
+```
+
+Then runs:
+
+```text
+composer install   only if backend/vendor is missing
+php artisan key:generate --force
+php artisan config:clear
+php artisan migrate --force
+php artisan db:seed --force
+```
+
+Default test login seeded:
+
+```text
+Email: admin@zamboanguita.local
+Password: admin123
+```
