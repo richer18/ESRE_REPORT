@@ -1,21 +1,46 @@
 import argparse
 import csv
+import importlib
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-import fdb
+
+def ensure_python_package(import_name, package_name=None):
+    try:
+        return importlib.import_module(import_name)
+    except ImportError:
+        package_name = package_name or import_name
+        print(f"STATUS: Missing Python package '{package_name}'. Installing now...")
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        except subprocess.CalledProcessError as exc:
+            print(f"STATUS: Failed to install Python package '{package_name}'.")
+            raise exc
+        print(f"STATUS: Python package '{package_name}' installed successfully.")
+        return importlib.import_module(import_name)
+
+
+fdb = ensure_python_package("fdb")
+ensure_python_package("openpyxl")
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-
 DEFAULT_DB_PATHS = [
-    r"E:\ZAMBOANGUITA.FDB",
-    r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB",
+    r"main-server:i_tax046zamboanguita",
+    # r"E:\ZAMBOANGUITA.FDB",
+    # r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB",
 ]
-FB_CLIENT = r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll"
+DEFAULT_FB_CLIENT_PATHS = [
+    r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll",
+    r"C:\ITAX\utilities\fbclient.dll",
+]
+DEFAULT_ODBC_DSN = "itaxzamboanguita"
+CONNECTION_MODE = os.environ.get("ESRE_CONNECTION", "odbc").strip().lower()
 SQL_FILE = Path(__file__).resolve().parent / "firebird_metadata" / "collection_analysis_queries.sql"
 OUTPUT_DIR = Path(__file__).resolve().parent / "firebird_metadata" / "output"
 GOOGLE_EXPORT_DIR = Path(__file__).resolve().parent / "google_sheet_exports"
@@ -23,15 +48,48 @@ TEMPLATE_DIR = Path(__file__).resolve().parent / "report_template"
 BUSINESS_PERMIT_DIR = Path(__file__).resolve().parent / "BUSINESS_PERMIT_REPORT"
 
 
-def resolve_db_path():
+def is_firebird_server_path(value):
+    value = (value or "").strip()
+    if not value:
+        return False
+    if re.match(r"^[A-Za-z]:[\\/]", value):
+        return False
+    return ":" in value
+
+
+def db_path_candidates():
     env_path = os.environ.get("ESRE_FIREBIRD_DB")
-    candidates = [env_path] if env_path else []
-    candidates.extend(DEFAULT_DB_PATHS)
+    if env_path:
+        return [env_path]
+    return list(DEFAULT_DB_PATHS)
+
+
+def resolve_db_path():
+    candidates = db_path_candidates()
     for candidate in candidates:
-        if candidate and Path(candidate).exists():
+        candidate = (candidate or "").strip()
+        if not candidate:
+            continue
+        if is_firebird_server_path(candidate):
+            return candidate
+        if Path(candidate).exists():
             return candidate
     return candidates[0] if candidates else DEFAULT_DB_PATHS[0]
 
+
+def resolve_fb_client():
+    env_path = os.environ.get("ESRE_FIREBIRD_CLIENT")
+    candidates = [env_path] if env_path else []
+    candidates.extend(DEFAULT_FB_CLIENT_PATHS)
+    for candidate in candidates:
+        candidate = (candidate or "").strip()
+        if candidate and Path(candidate).exists():
+            return candidate
+    return candidates[0] if candidates else DEFAULT_FB_CLIENT_PATHS[0]
+
+
+def resolve_odbc_dsn():
+    return os.environ.get("ESRE_ODBC_DSN", DEFAULT_ODBC_DSN).strip()
 FDB_TEMPLATE_REPORTS = {
     21: "Summary of Collection",
     22: "Summary of Collection no rpt",
@@ -1179,17 +1237,70 @@ def split_summary_amount(name, amount):
     return row
 
 
+def open_firebird_connection(user="SYSDBA", password="masterkey", charset="UTF8"):
+    fb_client = resolve_fb_client()
+    last_error = None
+    for db_path in db_path_candidates():
+        db_path = (db_path or "").strip()
+        if not db_path:
+            continue
+        if not is_firebird_server_path(db_path) and not Path(db_path).exists():
+            print(f"STATUS: Skipping missing local database path: {db_path}")
+            continue
+        print(f"STATUS: Connecting to Firebird database: {db_path}")
+        print(f"STATUS: Firebird client: {fb_client}")
+        try:
+            connection = fdb.connect(
+                dsn=db_path,
+                user=user,
+                password=password,
+                charset=charset,
+                fb_library_name=fb_client,
+                isolation_level=fdb.ISOLATION_LEVEL_READ_COMMITED_RO,
+                no_db_triggers=True,
+                no_gc=True,
+            )
+        except Exception as exc:
+            last_error = exc
+            print(f"STATUS: Database connection failed: {exc}")
+            continue
+        print("STATUS: Database connected successfully.")
+        return connection
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("No usable Firebird database path was found.")
+
+def open_odbc_connection(user="SYSDBA", password="masterkey", charset="UTF8"):
+    dsn = resolve_odbc_dsn()
+    fb_client = resolve_fb_client()
+    print(f"STATUS: Connecting through ODBC DSN: {dsn}")
+    print(f"STATUS: ODBC Firebird client: {fb_client}")
+    pyodbc = ensure_python_package("pyodbc")
+    connection_string = f"DSN={dsn};UID={user};PWD={password};CLIENT={fb_client};"
+    try:
+        connection = pyodbc.connect(connection_string, autocommit=False)
+    except Exception as exc:
+        print(f"STATUS: ODBC connection failed: {exc}")
+        raise
+    print("STATUS: ODBC connected successfully.")
+    return connection
+
+def open_database_connection(user="SYSDBA", password="masterkey", charset="UTF8"):
+    mode = (CONNECTION_MODE or "odbc").strip().lower()
+    if mode == "odbc":
+        return open_odbc_connection(user=user, password=password, charset=charset)
+    if mode == "native":
+        return open_firebird_connection(user=user, password=password, charset=charset)
+    if mode == "auto":
+        try:
+            return open_firebird_connection(user=user, password=password, charset=charset)
+        except Exception as native_exc:
+            print(f"STATUS: Native Firebird connection unavailable; trying ODBC. Native error: {native_exc}")
+            return open_odbc_connection(user=user, password=password, charset=charset)
+    raise RuntimeError(f"Unsupported connection mode: {mode}")
+
 def connect_report_db(user="SYSDBA", password="masterkey", charset="UTF8"):
-    return fdb.connect(
-        dsn=resolve_db_path(),
-        user=user,
-        password=password,
-        charset=charset,
-        fb_library_name=FB_CLIENT,
-        isolation_level=fdb.ISOLATION_LEVEL_READ_COMMITED_RO,
-        no_db_triggers=True,
-        no_gc=True,
-    )
+    return open_database_connection(user=user, password=password, charset=charset)
 
 
 def normalize_collector_name(collector):
@@ -2575,6 +2686,7 @@ def run_fdb_template_report(number, output_path, date_from, date_to, user, passw
 
 
 def main():
+    global CONNECTION_MODE
     parser = argparse.ArgumentParser(
         description="Run SELECT-only Firebird collection analysis queries and export CSV."
     )
@@ -2588,10 +2700,22 @@ def main():
     parser.add_argument("date_to", nargs="?", type=parse_date, help="End date, YYYY-MM-DD.")
     parser.add_argument("collector_name", nargs="?", help="Optional collector name for collector reports.")
     parser.add_argument("--list", action="store_true", help="List available queries and exit.")
+    parser.add_argument(
+        "--test-connection",
+        action="store_true",
+        help="Test the Firebird database connection and exit.",
+    )
+    parser.add_argument(
+        "--connection",
+        choices=("native", "odbc", "auto"),
+        default=CONNECTION_MODE,
+        help="Database connection mode. Use odbc for DSN=itaxzamboanguita.",
+    )
     parser.add_argument("--collector", help="Optional collector/user id filter for collector reports.")
     parser.add_argument("--user", default="SYSDBA", help="Firebird username. Default: SYSDBA.")
     parser.add_argument("--password", default="masterkey", help="Firebird password. Default: masterkey.")
     args = parser.parse_args()
+    CONNECTION_MODE = args.connection
     if args.collector is None and args.collector_name:
         args.collector = args.collector_name
 
@@ -2599,6 +2723,12 @@ def main():
 
     if args.list:
         list_queries(queries)
+        return
+
+    if args.test_connection:
+        connection = open_database_connection(user=args.user, password=args.password, charset="UTF8")
+        connection.close()
+        print("STATUS: Connection test finished.")
         return
 
     if args.query_number is None or args.date_from is None or args.date_to is None:
@@ -2647,15 +2777,10 @@ def main():
     if not (statement_start.startswith("SELECT") or statement_start.startswith("WITH")):
         raise RuntimeError("Refusing to run a non-SELECT statement.")
 
-    connection = fdb.connect(
-        dsn=resolve_db_path(),
+    connection = open_firebird_connection(
         user=args.user,
         password=args.password,
         charset="UTF8",
-        fb_library_name=FB_CLIENT,
-        isolation_level=fdb.ISOLATION_LEVEL_READ_COMMITED_RO,
-        no_db_triggers=True,
-        no_gc=True,
     )
 
     try:
@@ -2673,3 +2798,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
