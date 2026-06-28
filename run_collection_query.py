@@ -32,12 +32,10 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 DEFAULT_DB_PATHS = [
     r"main-server:i_tax046zamboanguita",
-    # r"E:\ZAMBOANGUITA.FDB",
-    # r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB",
+    r"C:\ZAMBOANGUITA_DB\ZAMBOANGUITA.FDB",
 ]
 DEFAULT_FB_CLIENT_PATHS = [
     r"C:\Program Files\Firebird\Firebird_2_5\bin\fbclient.dll",
-    r"C:\ITAX\utilities\fbclient.dll",
 ]
 DEFAULT_ODBC_DSN = "itaxzamboanguita"
 CONNECTION_MODE = os.environ.get("ESRE_CONNECTION", "odbc").strip().lower()
@@ -104,7 +102,7 @@ FDB_TEMPLATE_REPORTS = {
     31: "Full Report Collections",
     32: "CMCI Annex A-B Business Permit Registration Report",
     33: "Tax on Business Summary from BPLS Business Tax",
-    34: "Generate Receipt Collector",
+    34: "Generate Collection Receipt Per Collector",
 }
 
 COLLECTOR_ALIASES = {
@@ -2533,7 +2531,7 @@ def build_generate_receipt_collector_rows_from_fdb(date_from, date_to, user, pas
 def write_generate_receipt_collector_workbook(rows, output_path, date_from, date_to, collector):
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Generate Receipt Collector"
+    sheet.title = "Generate Collection Receipt Per Collector"
 
     collector_label = normalize_collector_name(collector)
     body_rows = rows[1:]

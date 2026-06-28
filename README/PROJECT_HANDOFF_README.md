@@ -2748,3 +2748,467 @@ Default test login seeded:
 Email: admin@zamboanguita.local
 Password: admin123
 ```
+
+## 2026-06-27 LGU Treasury Reporting System Latest Updates
+
+This section records the latest changes made in:
+
+```text
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\LGU_TreasuryReportingSystem
+```
+
+### UI Theme, Branding, and Sidebar
+
+Applied the official UI color palette:
+
+```text
+Primary Blue: #0554F2
+Secondary Sky Blue: #6AAED9
+Success Green: #8CBF3F
+Warning Yellow: #F2D230
+Danger / Alert Orange-Red: #D93F07
+```
+
+Reusable CSS variables were added in:
+
+```text
+frontend\src\index.css
+```
+
+Theme styling was applied across:
+
+```text
+frontend\src\App.css
+frontend\src\pages\Dashboard\DashboardPage.jsx
+frontend\src\pages\AcoDashboard\AcoDashboardPage.jsx
+frontend\src\pages\Rcd\RcdPage.jsx
+frontend\src\pages\GeneralFund\components\*.jsx
+```
+
+Official logo:
+
+```text
+frontend\src\assets\TREASURER_ORIGINAL_LOGO.png
+```
+
+The logo is now used in:
+
+```text
+frontend\src\App.jsx
+frontend\src\pages\Login\LoginPage.jsx
+```
+
+Sidebar behavior:
+
+```text
+1. Sidebar is sticky/full-height on desktop.
+2. Main workspace is the scrollable container.
+3. Sidebar nav scrolls internally when needed.
+4. Sign out stays at the bottom of the dark sidebar.
+```
+
+The shared topbar is hidden for pages with their own headers:
+
+```text
+General Fund
+Trust Fund
+Community Tax
+Real Property Tax
+RCD
+ACO Dashboard
+Income Target
+Search Receipt
+Reports
+```
+
+### Reports Page Cleanup
+
+The Reports dropdown no longer duplicates reports 1 to 20.
+
+Current behavior:
+
+```text
+Main dropdown = active/implemented reports 21+
+Other Reports = reports 1 to 20 only
+```
+
+File:
+
+```text
+frontend\src\pages\Reports\ReportsPage.jsx
+```
+
+### Report 27 Summary Report Sharing UI Fixes
+
+Fixed the sharing preview layout:
+
+```text
+1. Correct LAND and BUILDING colspans.
+2. Fixed BSC/SEF table overflow.
+3. Added explicit column widths.
+4. Long labels now wrap inside the first column.
+```
+
+Files:
+
+```text
+frontend\src\pages\Reports\ReportsPage.jsx
+frontend\src\App.css
+```
+
+### Report 28 Provincial RPT Coding / Province Remittance Report
+
+Report 28 preview was revised to follow:
+
+```text
+LGU_TreasuryReportingSystem\template\PROVINCIAL_RPT_CODING_TEMPLATE.xlsx
+```
+
+Template structure discovered:
+
+```text
+Sheets:
+- GF
+- SEF
+
+Main columns:
+- Classification
+- Account code
+- Current Year amount
+- Account code
+- Prior Year amount
+- Account code
+- Current Year Penalty amount
+- Account code
+- Prior Year amount
+
+Footer rows:
+- SUB TOTAL
+- TOTAL REMITTANCE GF / SEF
+```
+
+Implementation details:
+
+```text
+1. runner\report_preview_readonly.py now returns template_cells for report 28.
+2. frontend\src\pages\Reports\ReportsPage.jsx builds GENERAL FUND and SEF coding sheets from those cells.
+3. frontend\src\App.css includes the workbook-style preview layout.
+4. GF report uses BSC 35% Provincial Share.
+5. SEF report uses SEF 50% Provincial Share.
+```
+
+June 2026 reconciliation test:
+
+```text
+Date range: 2026-06-01 to 2026-06-30
+
+Report 27 BSC Provincial:        61,308.331000
+Report 28 GF Remittance:         61,308.331000
+Variance:                         0.000000
+
+Report 28 SEF Remittance:        87,583.330000
+```
+
+Conclusion:
+
+```text
+Report 28 TOTAL REMITTANCE GF ties to Report 27 BSC Provincial Share.
+Report 28 TOTAL REMITTANCE SEF is computed from Report 27 SEF template cells.
+```
+
+Current caution:
+
+```text
+Some Firebird classification buckets do not map one-to-one to the provincial template labels.
+Rows with unclear duplicate mapping were left blank instead of reusing the same bucket twice.
+Examples needing future validation:
+- Land Machinery
+- Land Recreational
+- Building Recreational
+- Special / Scientific / Industrial grouping
+```
+# 2026-06-27 RCD Accountable Forms Tracking Phase 2
+
+Accountable Forms Tracking has been continued after the initial ACO remittance workflow foundation.
+
+Current implemented scope in `LGU_TreasuryReportingSystem`:
+
+```text
+Frontend:
+- RCD page now has an Accountable Forms tab.
+- The tab encodes custodian release/logbook data:
+  - Type / Form No.
+  - Serial / Booklet No.
+  - OR From
+  - OR To
+  - Collector
+  - Date Released
+  - Released By
+  - Collector Signed By
+  - Remarks
+- Receipt count is computed from OR From/To.
+- Saved releases are shown in a table.
+
+Backend:
+- Added API endpoints:
+  - GET /api/rcd/accountable-forms
+  - POST /api/rcd/accountable-forms
+
+Python / AccessDB:
+- runner/rcd_access_store.py supports:
+  - accountable-list
+  - accountable-save
+- Data is stored in rcd_accountable_form_releases.
+- RCD validation can use these records to check if an OR range belongs to the selected collector.
+```
+
+Rules:
+
+```text
+Firebird .FDB remains read-only.
+Accountable Forms tracking is saved in AccessDB only.
+This supports the manual logbook workflow where the accountable forms custodian releases OR booklets/ranges to collectors.
+```
+
+# 2026-06-27 RCD New Updates Summary
+
+These are the RCD workflow and implementation notes that must be carried forward in the new system.
+
+## RCD workspace behavior
+
+```text
+- RCD page focuses on Daily Entries and Accountable Forms.
+- Review Queue, Deposit Queue, old Remittance Timeline, and old placeholder Accountability sections are hidden/commented while the core workflow is stabilized.
+- New Entry opens the RCD entry modal.
+- Report No. is manual and optional for now because late/older RCDs may already have an external/manual report number.
+- Fund/Template is not manually selected in the core RCD entry.
+- Generated/downloaded RCD output includes both 100_GF and 200_SEF sheets.
+```
+
+## A. Collections rule
+
+```text
+Collector enters:
+- Type / Form No.
+- OR From
+- OR To
+- Collector Amount
+
+System validates against Firebird .FDB in read-only mode.
+The .FDB amount is used only for validation/comparison.
+The original Firebird database must not be updated.
+```
+
+## RPT / AF 56 split rule
+
+```text
+AF 56 / RPT can contain both GF and SEF portions.
+When validating 100_GF only, an RPT total may look doubled unless split.
+
+Example:
+Total in Firebird: 375.92
+GF 100 share: 187.96
+SEF 200 share: 187.96
+Combined total: 375.92
+```
+
+## RCD template and output
+
+```text
+Template:
+C:\Users\LIFT-LAPTOP\OneDrive\Desktop\LGU_TreasuryReportingSystem\template\RCD_UPDATED.xlsx
+
+The Python export fills the Excel template.
+When printing or downloading, both 100_GF and 200_SEF sheets are prepared.
+The temporary output filename uses collector full name and date, for example:
+RICARDO_T_ENOPIA_2026-05-28.xlsx
+```
+
+## Collector name mapping
+
+```text
+FLORA MY = FLORA MY D. FERRER
+AGNES    = AGNES B. ELLO
+RICARDO  = RICARDO T. ENOPIA
+IRIS     = ANGELIQUE IRIS A. RAFALES
+EMILY    = EMILY E. CREDO
+```
+
+## RCD labels and display
+
+```text
+- Community Tax Certificate should display as Comm Tax. in RCD outputs.
+- Report No. blank field should not print as a dash.
+- Save/print should not duplicate the same RCD batch.
+- Print or download changes finalized output status to Saved.
+```
+
+## RCD daily batches action menu
+
+```text
+Action column should use one Actions dropdown/menu, not multiple crowded buttons.
+
+Draft:
+- View Details
+- Edit
+- Validate
+- Delete Draft
+
+For Remittance / Ready for Remittance:
+- View Details
+- Remit to ACO
+- Edit
+- Void / Cancel
+
+Remitted to ACO:
+- View Details
+- Print
+- Download PDF / Excel output
+- Audit Trail
+
+Received by ACO:
+- View Details
+- Print
+- Download PDF / Excel output
+- Audit Trail
+- Void / Cancel with reason
+
+Printed:
+- View Details
+- Reprint
+- Download PDF / Excel output
+- Audit Trail
+- Void / Cancel with reason
+
+Voided:
+- View Details
+- Audit Trail only
+```
+
+## Delete / void rule
+
+```text
+Do not allow delete for Saved, Remitted, Received, or Printed RCD records.
+Only Draft can be deleted.
+Finalized records must use Void / Cancel with reason.
+```
+
+## Remittance workflow
+
+```text
+Collector remits collection to the Accountable Collecting Officer (ACO).
+
+Collector action label:
+- Remit to ACO
+
+ACO action label:
+- Receive Remittance
+
+Before remitting, validate:
+- RCD has OR records
+- Total amount is greater than zero
+- No duplicate OR numbers
+- No cancelled/voided OR numbers
+- Collector matches the assigned accountable form OR range
+- Amount remitted matches total collection, or remarks are required for variance
+```
+
+## RCD audit fields to preserve
+
+```text
+remittance_status
+remitted_to_aco_by
+remitted_to_aco_at
+received_by_aco
+received_by_aco_at
+amount_remitted
+amount_received
+variance_amount
+remittance_remarks
+created_by
+created_at
+updated_by
+updated_at
+printed_by
+printed_at
+voided_by
+voided_at
+void_reason
+```
+
+## Future RCD receipt/remittance lookup
+
+```text
+Goal:
+When an OR is already remitted, the General Fund / receipt view should show:
+- remitted status
+- RCD number
+- RCD date/status
+
+Temporary source:
+- JSON or AccessDB
+
+Future source:
+- MySQL tables after final validation
+
+Cancelled or voided receipts must not be included in normal paid collection reports.
+```
+
+# 2026-06-27 ACO Dashboard Phase 2
+
+The ACO Dashboard Phase 2 tabs are now functional instead of placeholders.
+
+Implemented tabs:
+
+```text
+Remittances:
+- Existing RCD remittance monitor remains active.
+- Refresh now reloads RCD batches, Accountable Forms, and Audit Trail together.
+
+Accountable Forms:
+- Shows accountable form releases from AccessDB.
+- Displays Released Date, Form, Serial, Collector, OR Range, Receipts, Released By, Signed By, Ending Balance, Status, and Remarks.
+- Uses GET /api/rcd/accountable-forms.
+
+Audit Trail:
+- Shows recent RCD AccessDB audit logs globally.
+- Displays Date/Time, RCD No., Collector, Action, Performed By, Status, Amount, and Details.
+- Uses GET /api/rcd/audit-trail.
+
+Reports:
+- Shows operational ACO summaries from the active RCD data:
+  - Collection per Collector
+  - Status Summary
+  - Form / OR Type Summary
+```
+
+Backend / runner update:
+
+```text
+runner/rcd_access_store.py now supports:
+- audit-list
+
+Laravel API endpoint added:
+- GET /api/rcd/audit-trail
+```
+
+# 2026-06-27 Dashboard Logs Panel Update
+
+The bottom-right Dashboard panel was changed from `Collection Share` to `Logs`.
+
+Purpose:
+
+```text
+Show the latest paid receipt activity so the Treasurer can quickly see who recently paid.
+```
+
+Implementation:
+
+```text
+- Dashboard now loads recent paid collections from GET /api/general-fund/collections for the latest month window.
+- The Logs panel displays newest paid receipts first.
+- Cancelled/voided receipts are excluded by using rows with collection_status = Paid.
+- Each log row shows taxpayer, OR number, payment date, collector, and total amount.
+- The old Collection Share detail list was removed from that bottom panel.
+- The existing Collection Share donut chart near the top remains available.
+```
