@@ -3212,3 +3212,534 @@ Implementation:
 - The old Collection Share detail list was removed from that bottom panel.
 - The existing Collection Share donut chart near the top remains available.
 ```
+
+## 2026-06-29 MySQL Future Deployment and Current System Handoff
+
+This section documents the latest planning and review for moving selected LGU Treasury Reporting System data to MySQL later while keeping the existing SQLite laptop setup working.
+
+### Current database direction
+
+```text
+Current local app database:
+- SQLite is still used for the laptop/local Laravel auth and app storage.
+
+Legacy official collection source:
+- Firebird .FDB remains the source of truth for actual payments, OR numbers, taxpayer names, collection dates, amounts, RPT/CTC/General Fund/Trust Fund/Other Fees details, and payment status.
+
+Future server database:
+- MySQL 8.0+ through XAMPP will store app-owned data only.
+- Do not replace Firebird payment records with MySQL records.
+- Do not remove SQLite support until the migration is formally approved and tested.
+```
+
+### XAMPP MySQL settings planned
+
+```text
+Database name: lgu_treasury_reporting
+MySQL target: MySQL 8.0+
+XAMPP MySQL port: 3307
+Host: 127.0.0.1
+Default local user: root
+Default local password: blank unless configured in XAMPP
+```
+
+Future Laravel `.env` values when switching a server/PC to MySQL:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_DATABASE=lgu_treasury_reporting
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+Command to run the future standalone SQL script in XAMPP:
+
+```powershell
+C:\xampp\mysql\bin\mysql.exe -u root -P 3307 < database\mysql\lgu_treasury_schema.sql
+```
+
+If root has a password:
+
+```powershell
+C:\xampp\mysql\bin\mysql.exe -u root -p -P 3307 < database\mysql\lgu_treasury_schema.sql
+```
+
+Important note:
+
+```text
+-P means port.
+-p means password.
+```
+
+### What should be stored in MySQL later
+
+MySQL should store app-owned and workflow-owned data:
+
+```text
+1. User accounts
+   - users
+   - roles
+   - permissions
+   - role_permissions
+   - user_permissions
+
+2. Collector/cashier assignment mapping
+   - collector_cashier_assignments
+   - maps Laravel users to Firebird PAYMENT.COLLECTOR / PAYMENT.USERID safely
+
+3. Accountable forms
+   - accountable_forms
+   - accountable_form_transactions
+   - tracks AF51, AF56, CTC, and other accountable form release/return logs
+
+4. RCD workflow
+   - rcd_batches
+   - rcd_collection_lines
+   - rcd_entries
+   - rcd_remittance_events
+   - rcd_access_audit_logs
+
+5. Income target
+   - income_targets
+
+6. Cache/snapshot tables
+   - dashboard_summary_cache
+   - report_preview_cache
+   - generated_report_files
+   - receipt_exception_snapshots
+
+7. Treasury calendar/reminders
+   - treasury_calendar_events
+```
+
+### What should not be copied as master data
+
+Do not use MySQL as the master source for these yet:
+
+```text
+- All Firebird PAYMENT rows
+- All PAYMENTDETAIL rows
+- All PAYMENTCLASSDETAIL rows
+- All taxpayer master records
+- All RPT/CTC/general fund/trust fund payment details
+```
+
+Reason:
+
+```text
+Firebird .FDB is still the official legacy source of collection truth.
+MySQL should store RCD/remittance workflow, audit trail, user management, accountable-form tracking, income targets, cache snapshots, and other web-app data.
+```
+
+### Remitted OR tracking decision
+
+The OR numbers that have been remitted should be stored in MySQL later, but only as RCD/remittance tracking records, not as replacement payment records.
+
+Recommended table:
+
+```text
+rcd_entries
+```
+
+Purpose:
+
+```text
+- Store every OR included in an RCD/remittance.
+- Link each OR to rcd_batches.
+- Store receipt_no, receipt_date, taxpayer_name, amount, collector_name, fund_type, transaction_type, Firebird payment/detail IDs, RCD number, RCD date, remittance status, remitted_at, received_at, and validation status.
+- Allow Search Receipt and General Fund View to show whether an OR is already remitted and what RCD number it belongs to.
+- Make Receipts Not Remitted reporting more accurate than range-only matching.
+```
+
+Rule:
+
+```text
+Only save ORs to MySQL when they enter the RCD/remittance workflow.
+Do not import all Firebird receipts into MySQL by default.
+Cancelled or voided receipts must not be included in normal paid collection totals.
+```
+
+### Proposed standalone SQL file
+
+The proposed future schema file is:
+
+```text
+database/mysql/lgu_treasury_schema.sql
+```
+
+Status:
+
+```text
+- SQL script was designed in the conversation.
+- File has not yet been created unless explicitly approved later.
+- No Laravel migrations have been created for this MySQL phase.
+- No MySQL tables have been created or executed from this plan yet.
+```
+
+The script should include these tables:
+
+```text
+roles
+permissions
+users
+role_permissions
+user_permissions
+collector_cashier_assignments
+accountable_forms
+accountable_form_transactions
+rcd_batches
+rcd_collection_lines
+rcd_entries
+rcd_remittance_events
+rcd_access_audit_logs
+dashboard_summary_cache
+report_preview_cache
+generated_report_files
+receipt_exception_snapshots
+income_targets
+treasury_calendar_events
+```
+
+### Report 37 investigation result
+
+A new report was investigated but not implemented yet:
+
+```text
+37. Official Report Breakdown
+Subtitle: Category Breakdown
+Output: Download-only Excel report
+Endpoint to reuse: GET /api/generated-reports/37/download
+Frontend call: /generated-reports/37/download
+```
+
+Report 37 needs Date From / Date To filters instead of Month and Year.
+
+Example call:
+
+```text
+/generated-reports/37/download?date_from=2026-01-01&date_to=2026-03-31
+```
+
+Required categories:
+
+```text
+Tax on Business
+Receipts from Economic Enterprises
+Regulatory Fees
+Service/User Charges
+Real Property Tax only Municipal Sharing
+RPT GF
+RPT SF
+Grand Total
+```
+
+Existing mapping found:
+
+```text
+Tax on Business:
+- Manufacturing
+- Distributor
+- Retailing
+- Banks & Other Financial Int.
+- Other Business Tax
+
+Receipts from Economic Enterprises:
+- Water Fee
+- Market Stall Fee
+- Cash Tickets
+- SlaughterHouse Fee
+- Rental of Equipment
+- Cockpit Share
+- Sultadas
+- Diving Fee
+
+Regulatory Fees:
+- Mayor's Permit
+- Weights & Measures
+- Tricycle Permit Fee
+- Occupation Tax
+- Cert. of Ownership
+- Cert. of Transfer
+- Sand & Gravel
+- Fines & Penalties
+- Docking and Mooring Fee
+- Fishing Permit Fee
+- Miscellaneous
+
+Service/User Charges:
+- Registration of Birth
+- Marriage Fee
+- Burial Fee
+- Correction of Entry
+- Sale of Agri. Prod.
+- Sale of Acct. Forms
+- Doc Stamp Tax
+- Secretaries Fees
+- Med./Lab. Fees
+- Garbage Fees
+
+RPT GF / BSC:
+- PAYMENT + PAYMENTCLASSDETAIL
+- ITAXTYPE_CT = 'BSC'
+- Municipal share = 40%
+
+RPT SF / SEF:
+- PAYMENT + PAYMENTCLASSDETAIL
+- ITAXTYPE_CT = 'SEF'
+- Municipal share = 50%
+```
+
+Files expected to change if Report 37 is approved:
+
+```text
+frontend/src/pages/Reports/ReportsPage.jsx
+frontend/src/data/reportCatalog.js
+backend/app/Reports/ReportCatalog.php
+backend/app/Http/Controllers/Api/GeneratedReportController.php
+runner/report_excel_export_readonly.py
+```
+
+Do not change Report 21/27 calculations when adding Report 37.
+Do not double-count RPT or sharing amounts.
+
+### Current repository review note
+
+Latest quick review showed one modified local data file:
+
+```text
+backend/database/rcd/rcd_remittance.accdb
+```
+
+This is the AccessDB RCD data file. Treat it as local data. Do not overwrite or reset it unless the user explicitly approves.
+
+No project code files were changed during the MySQL planning step.
+
+### Recommended next steps on another PC
+
+```text
+1. Read this README first.
+2. Keep SQLite running unless the user explicitly wants to switch to MySQL.
+3. Configure backend/.env for local Firebird/ODBC access.
+4. Start backend and frontend using server_runner/server_menu.bat.
+5. Confirm login works.
+6. Confirm /api/firebird/status works.
+7. Confirm Dashboard loads from JSON cache.
+8. Confirm Reports page still downloads reports 21 to 36.
+9. Confirm RCD AccessDB path is valid and not overwritten.
+10. Only after approval, create database/mysql/lgu_treasury_schema.sql from the planned SQL script.
+11. Only after approval, run the SQL against XAMPP MySQL port 3307.
+12. Only after approval, convert the standalone SQL design into Laravel migrations.
+```
+
+## 2026-06-29 Next MySQL Step: Data Import / Seed Runner
+
+If the MySQL database and tables were already created from the planned `lgu_treasury_schema.sql`, the next step is not to change the schema immediately. The next step is to build a controlled data import / seed runner.
+
+### Goal of the next runner
+
+Create a safe script runner that can insert or import app-owned data into MySQL, especially:
+
+```text
+1. User login accounts
+2. Roles and permissions seed data
+3. Role-permission mappings
+4. Collector/cashier assignments
+5. Income target data from Excel
+6. Optional dashboard/report cache seed data later
+7. RCD/remitted OR data later after workflow approval
+```
+
+### Recommended runner location
+
+Use the project runner folder:
+
+```text
+runner/mysql_seed_runner.py
+```
+
+Optional helper batch file later:
+
+```text
+server_runner/mysql_seed_menu.bat
+```
+
+Do not place Python scripts outside `runner/`.
+
+### Recommended MySQL connection source
+
+The runner should read database settings from environment variables or Laravel `.env`, not hardcoded values.
+
+Future MySQL `.env` values:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_DATABASE=lgu_treasury_reporting
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+### First data to insert
+
+Priority order:
+
+```text
+1. roles
+2. permissions
+3. role_permissions
+4. first admin user
+5. collector_cashier_assignments
+6. income_targets
+```
+
+### User import rule
+
+Passwords must never be plaintext in MySQL.
+
+The runner must either:
+
+```text
+- Ask Laravel/API to create users so Laravel Hash::make() is used; or
+- Generate bcrypt-compatible password hashes safely; or
+- Accept already-hashed Laravel password values only.
+```
+
+Do not store plaintext passwords.
+Do not log passwords.
+Do not print password hashes in normal logs.
+
+Recommended first admin placeholder:
+
+```text
+Email: admin@zamboanguita.local
+Password: create/reset through Laravel, not direct plaintext SQL
+Role: admin
+Status: active
+```
+
+### Income Target import
+
+The income target importer should read from the existing Excel file if available:
+
+```text
+IncomeTarget/2026_Income_Target.xlsx
+```
+
+Expected MySQL target table:
+
+```text
+income_targets
+```
+
+Expected columns to populate:
+
+```text
+year
+source_group
+target_amount
+increase_rate
+remarks
+created_by
+updated_by
+created_at
+updated_at
+```
+
+Expected source groups:
+
+```text
+Tax on Business
+Regulatory Fees and Charges
+Receipt from Economic Enterprise
+Service/User Charges
+Other Taxes
+RPT Local GF
+RPT SEF
+Others
+```
+
+Annual increase rule:
+
+```text
+Default planned increase rate: 10% per year
+Stored as: 0.1000
+```
+
+### Collector/cashier assignment seed
+
+Seed these known mappings:
+
+```text
+FLORA MY D. FERRER        -> firebird collector: flora
+AGNES B. ELLO             -> firebird collector: agnes
+RICARDO T. ENOPIA         -> firebird collector: ricardo
+EMILY E. CREDO            -> firebird collector: emily
+ANGELIQUE IRIS A. RAFALES -> firebird collector: angelique
+```
+
+### Idempotent import requirement
+
+The runner must be safe to run more than once.
+
+Use upsert behavior:
+
+```text
+- roles by name
+- permissions by name
+- users by email
+- collector assignments by firebird_collector_name or alias
+- income_targets by year + source_group
+```
+
+Do not duplicate rows when the runner is executed again.
+
+### Suggested runner commands
+
+Possible future commands:
+
+```powershell
+python .\runner\mysql_seed_runner.py --check
+python .\runner\mysql_seed_runner.py --seed-roles
+python .\runner\mysql_seed_runner.py --seed-admin
+python .\runner\mysql_seed_runner.py --seed-collectors
+python .\runner\mysql_seed_runner.py --import-income-target 2026
+python .\runner\mysql_seed_runner.py --all
+```
+
+### Safety rules for next developer
+
+```text
+- Do not import all Firebird payments into MySQL.
+- Do not overwrite Firebird data.
+- Do not modify Firebird from this runner.
+- MySQL should store app-owned data only.
+- For remitted OR tracking, import only ORs that enter the RCD/remittance workflow.
+- Keep SQLite support until the MySQL switch is formally approved.
+- Test import first on a local XAMPP database, not production.
+```
+
+### Validation after data import
+
+After the seed/import runner is built, verify:
+
+```text
+1. MySQL roles exist.
+2. MySQL permissions exist.
+3. Admin user can login after Laravel is configured to MySQL.
+4. Collector/cashier assignment rows exist and match Firebird collector names.
+5. Income targets match the Excel workbook totals.
+6. Running the import twice does not duplicate records.
+7. No plaintext passwords exist in the users table.
+```
+
+### Current status
+
+```text
+- MySQL schema design was prepared.
+- The user may already have created the MySQL database and tables using the SQL script.
+- The next task is to create a data import/seed runner.
+- No import runner has been created yet in this handoff update.
+```
